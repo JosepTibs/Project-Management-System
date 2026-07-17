@@ -14,6 +14,11 @@ class ProjectsController extends Controller
     public function index()
     {
         $projects = projects::withCount('members', 'workItems')
+            ->selectSub(function ($query) {
+                $query->selectRaw('ROUND(AVG(progress), 2)')
+                    ->from('work_items')
+                    ->whereColumn('project_id', 'projects.id');
+            }, 'completion_percentage')
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($project) {
@@ -24,6 +29,7 @@ class ProjectsController extends Controller
                     'item_prefix' => $project->item_prefix,
                     'members_count' => $project->members_count,
                     'work_items_count' => $project->work_items_count,
+                    'completion_percentage' => $project->completion_percentage ?? 0,
                 ];
             });
 
@@ -52,9 +58,9 @@ class ProjectsController extends Controller
             'description'=> 'nullable|string',
             'item_prefix'=> 'required|string|max:255',
         ]);
-            projects::create($validated);
+            $project = projects::create($validated);
 
-            return redirect()->route('projects.index')->with('success','Project Created Successfully');
+            return redirect()->route('projects.setup.show', $project->id)->with('success', 'Project created. Now set it up.');
     }
 
     /**
@@ -62,7 +68,7 @@ class ProjectsController extends Controller
      */
     public function show(projects $project)
     {
-        $project->load(['members.user', 'workItems']);
+        $project->load(['members.user', 'workItems', 'milestones', 'workItemGroups.workItems']);
 
         return Inertia::render('projects/show', [
             'project' => [
@@ -70,6 +76,7 @@ class ProjectsController extends Controller
                 'name' => $project->name,
                 'description' => $project->description,
                 'item_prefix' => $project->item_prefix,
+                'completion_percentage' => $project->completion_percentage,
                 'members' => $project->members->map(function ($member) {
                     return [
                         'id' => $member->id,
@@ -83,7 +90,38 @@ class ProjectsController extends Controller
                         'id' => $item->id,
                         'title' => $item->title,
                         'priority' => $item->priority,
-                        'due_date' => $item->due_date,
+                        'due_date' => $item->due_date?->format('Y-m-d'),
+                        'group_id' => $item->group_id,
+                    ];
+                }),
+                'milestones' => $project->milestones->map(function ($milestone) {
+                    return [
+                        'id' => $milestone->id,
+                        'name' => $milestone->name,
+                        'description' => $milestone->description,
+                        'start_date' => $milestone->start_date?->format('Y-m-d'),
+                        'target_date' => $milestone->target_date?->format('Y-m-d'),
+                        'completed_at' => $milestone->completed_at?->format('Y-m-d'),
+                        'completion_percentage' => $milestone->completion_percentage,
+                        'order' => $milestone->order,
+                    ];
+                }),
+                'work_item_groups' => $project->workItemGroups->map(function ($group) {
+                    return [
+                        'id' => $group->id,
+                        'name' => $group->name,
+                        'description' => $group->description,
+                        'start_date' => $group->start_date?->format('Y-m-d'),
+                        'end_date' => $group->end_date?->format('Y-m-d'),
+                        'milestone_id' => $group->milestone_id,
+                        'work_items' => $group->workItems->map(function ($item) {
+                            return [
+                                'id' => $item->id,
+                                'title' => $item->title,
+                                'priority' => $item->priority,
+                                'due_date' => $item->due_date?->format('Y-m-d'),
+                            ];
+                        }),
                     ];
                 }),
             ],

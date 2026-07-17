@@ -21,6 +21,7 @@ interface ProjectItem {
     item_prefix: string;
     members_count: number;
     work_items_count: number;
+    completion_percentage: number;
 }
 
 interface ProjectsPageProps extends Record<string, unknown> {
@@ -103,6 +104,18 @@ export default function ProjectsIndex() {
                                             <FileText className="h-4 w-4" />
                                             {project.work_items_count} {project.work_items_count === 1 ? 'item' : 'items'}
                                         </span>
+                                    </div>
+                                    <div className="mt-4">
+                                        <div className="flex items-center justify-between text-sm mb-1">
+                                            <span className="text-muted-foreground">Progress</span>
+                                            <span className="font-medium">{Math.round(project.completion_percentage)}%</span>
+                                        </div>
+                                        <div className="w-full bg-secondary rounded-full h-2">
+                                            <div
+                                                className="bg-primary rounded-full h-2 transition-all"
+                                                style={{ width: `${project.completion_percentage}%` }}
+                                            />
+                                        </div>
                                     </div>
                                 </CardContent>
                                 <CardFooter className="border-t pt-4">

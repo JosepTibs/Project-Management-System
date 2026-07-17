@@ -20,9 +20,14 @@ class WorkItemGroupSeeder extends Seeder
         $startDate = now()->subWeeks(4);
 
         foreach ($projects as $project) {
+            $milestones = \App\Models\milestones::where('project_id', $project->id)->get();
+
             foreach ($groupData as $index => $group) {
+                $milestone = $milestones->get($index % $milestones->count());
+
                 work_item_groups::create([
                     'project_id' => $project->id,
+                    'milestone_id' => $milestone?->id,
                     'name' => $group['name'],
                     'description' => $group['description'],
                     'start_date' => $startDate->copy()->addWeeks($index * 3),

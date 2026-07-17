@@ -11,18 +11,18 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('work_item_groups', function (Blueprint $table) {
+        Schema::create('milestones', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('project_id');
-            $table->unsignedBigInteger('milestone_id')->nullable();
             $table->string('name');
-            $table->text('description');
-            $table->date('start_date');
-            $table->date('end_date');
+            $table->text('description')->nullable();
+            $table->date('start_date')->nullable();
+            $table->date('target_date')->nullable();
+            $table->timestamp('completed_at');
+            $table->unsignedInteger('order');
             $table->timestamps();
 
-            $table->foreign('project_id')->references('id')->on('projects')->onDelete('cascade');
-            $table->foreign('milestone_id')->references('id')->on('milestones')->onDelete('cascade');
+            $table->foreign('project_id')->references('id')->on('projects');
         });
     }
 
@@ -31,6 +31,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('work_item_groups');
+        Schema::dropIfExists('milestones');
     }
 };

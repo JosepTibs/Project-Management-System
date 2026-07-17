@@ -156,3 +156,68 @@
         @apply bg-background text-foreground;
     }
 }
+
+/* Gantt chart overrides for dark mode support */
+._3_ygE,
+._3ZbQT {
+    border-color: var(--border) !important;
+}
+
+._1nBOt,
+._34SS0 {
+    border-color: var(--border) !important;
+}
+
+._34SS0:nth-of-type(even) {
+    background-color: color-mix(in srgb, var(--muted) 50%, transparent) !important;
+}
+
+._2dZTy {
+    fill: var(--card) !important;
+}
+
+._2dZTy:nth-child(even) {
+    fill: var(--muted) !important;
+}
+
+._3rUKi,
+._RuwuK,
+._1rLuZ {
+    stroke: var(--border) !important;
+}
+
+._35nLX {
+    fill: var(--card) !important;
+    stroke: var(--border) !important;
+}
+
+._9w8d5,
+._2q1Kt {
+    fill: var(--foreground) !important;
+}
+
+._3zRJQ {
+    fill: var(--card) !important;
+}
+
+._3KcaM {
+    fill: var(--foreground) !important;
+}
+
+._3lLk3 {
+    color: var(--foreground) !important;
+}
+
+._2QjE6 {
+    color: var(--muted-foreground) !important;
+}
+
+._2TfEi {
+    color: var(--foreground) !important;
+}
+
+._3T42e {
+    background-color: var(--card) !important;
+    color: var(--card-foreground) !important;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
+}

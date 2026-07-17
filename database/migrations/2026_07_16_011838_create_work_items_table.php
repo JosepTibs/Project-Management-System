@@ -21,6 +21,7 @@ return new class extends Migration
             $table->unsignedBigInteger('assignee_id');
             $table->enum('priority',['low','medium','high','critical']);
             $table->date('due_date');
+            $table->unsignedTinyInteger('progress')->default(0);
             $table->timestamps();
 
             $table->foreign('project_id')->references('id')->on('projects')->onDelete('cascade');

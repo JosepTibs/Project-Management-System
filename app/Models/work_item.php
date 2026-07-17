@@ -22,7 +22,9 @@ class work_item extends Model
     protected function casts(): array
     {
         return [
+            'start_date'=> 'date',
             'due_date' => 'date',
+            'progress'=> 'integer',
         ];
     }
 

@@ -70,6 +70,7 @@ class WorkItemSeeder extends Seeder
                     'assignee_id' => $assignee->id,
                     'priority' => $itemData['priority'],
                     'due_date' => now()->addDays(rand(5, 45)),
+                    'progress' => rand(0, 100),
                 ]);
             }
         }

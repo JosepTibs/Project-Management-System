@@ -16,6 +16,8 @@ Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard'
 Route::resource('users', UserController::class);
 Route::resource('projects', ProjectsController::class);
 Route::resource('projects.work-items', WorkItemController::class);
+Route::get('projects/{project}/setup', [App\Http\Controllers\ProjectSetupController::class, 'show'])->name('projects.setup.show');
+Route::put('projects/{project}/setup', [App\Http\Controllers\ProjectSetupController::class, 'update'])->name('projects.setup.update');
 
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

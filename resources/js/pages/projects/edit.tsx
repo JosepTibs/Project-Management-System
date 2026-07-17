@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Users } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 
 interface ProjectData {
@@ -65,6 +65,14 @@ export default function EditProject() {
                         </Button>
                     </Link>
                     <h1 className="text-2xl font-bold">Edit Project</h1>
+                    <div className="ml-auto">
+                        <Link href={`/projects/${project.id}/setup`}>
+                            <Button variant="default" size="sm">
+                                <Users className="mr-2 h-4 w-4" />
+                                Manage Members & Items
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
 
                 <Card className="w-full max-w-2xl">

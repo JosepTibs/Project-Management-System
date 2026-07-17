@@ -50,15 +50,23 @@ class DashboardController extends Controller
             });
 
         // Projects overview with member count and work item count
-        $projectsOverview = projects::withCount(['members', 'workItems'])->get()->map(function ($project) {
-            return [
-                'id' => $project->id,
-                'name' => $project->name,
-                'description' => $project->description,
-                'members_count' => $project->members_count,
-                'work_items_count' => $project->work_items_count,
-            ];
-        });
+        $projectsOverview = projects::withCount(['members', 'workItems'])
+            ->selectSub(function ($query) {
+                $query->selectRaw('ROUND(AVG(progress), 2)')
+                    ->from('work_items')
+                    ->whereColumn('project_id', 'projects.id');
+            }, 'completion_percentage')
+            ->get()
+            ->map(function ($project) {
+                return [
+                    'id' => $project->id,
+                    'name' => $project->name,
+                    'description' => $project->description,
+                    'members_count' => $project->members_count,
+                    'work_items_count' => $project->work_items_count,
+                    'completion_percentage' => $project->completion_percentage ?? 0,
+                ];
+            });
 
         // Team members distribution (users per project)
         $teamDistribution = project_members::selectRaw('project_id, count(*) as total')
