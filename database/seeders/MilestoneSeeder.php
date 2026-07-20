@@ -18,7 +18,7 @@ class MilestoneSeeder extends Seeder
                 'description' => 'Complete project planning, requirements gathering, and initial design.',
                 'start_date' => '2026-01-01',
                 'target_date' => '2026-01-15',
-                'completed_at' => '2026-01-14 17:00:00',
+                'completed_at' => null,
                 'order' => 1,
             ],
             [

@@ -40,6 +40,7 @@ export default function CreateWorkItem() {
     const [groupId, setGroupId] = useState('');
     const [assigneeId, setAssigneeId] = useState('');
     const [priority, setPriority] = useState('');
+    const [progress, setProgress] = useState('0');
     const [dueDate, setDueDate] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
@@ -62,6 +63,7 @@ export default function CreateWorkItem() {
             group_id: groupId,
             assignee_id: assigneeId,
             priority,
+            progress: Number(progress),
             due_date: dueDate,
         }, {
             onError: (errs) => {
@@ -184,6 +186,21 @@ export default function CreateWorkItem() {
                                         </SelectContent>
                                     </Select>
                                     {errors.assignee_id && <p className="text-sm text-red-600">{errors.assignee_id}</p>}
+                                </div>
+
+                                {/* Progress */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="progress">Progress (%)</Label>
+                                    <Input
+                                        id="progress"
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={progress}
+                                        onChange={(e) => setProgress(e.target.value)}
+                                        placeholder="0"
+                                    />
+                                    {errors.progress && <p className="text-sm text-red-600">{errors.progress}</p>}
                                 </div>
 
                                 {/* Due Date */}

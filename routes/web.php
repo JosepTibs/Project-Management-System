@@ -16,6 +16,11 @@ Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard'
 Route::resource('users', UserController::class);
 Route::resource('projects', ProjectsController::class);
 Route::resource('projects.work-items', WorkItemController::class);
+Route::get('projects/{project}/kanban', [App\Http\Controllers\ProjectsController::class, 'kanban'])->name('projects.kanban');
+Route::get('work-items', [App\Http\Controllers\WorkItemController::class, 'globalIndex'])->name('work-items.global');
+Route::patch('projects/{project}/work-items/bulk-progress', [App\Http\Controllers\WorkItemController::class, 'bulkUpdateProgress'])->name('work-items.bulk-progress');
+Route::patch('work-items/{workItem}/status', [App\Http\Controllers\WorkItemController::class, 'updateStatus'])->name('work-items.status.update');
+Route::get('projects/{project}/groups', [App\Http\Controllers\ProjectSetupController::class, 'groupsIndex'])->name('projects.groups.index');
 Route::get('projects/{project}/setup', [App\Http\Controllers\ProjectSetupController::class, 'show'])->name('projects.setup.show');
 Route::put('projects/{project}/setup', [App\Http\Controllers\ProjectSetupController::class, 'update'])->name('projects.setup.update');
 

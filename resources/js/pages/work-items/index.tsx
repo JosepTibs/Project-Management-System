@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Plus, Search, Pencil, Trash2, ArrowLeft } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ArrowLeft, CheckSquare, Square } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface Status {
@@ -31,6 +31,7 @@ interface WorkItemData {
     description: string;
     priority: string;
     due_date: string;
+    progress: number;
     status: Status | null;
     group: Group | null;
     assignee: Member | null;
@@ -62,6 +63,8 @@ export default function WorkItemsIndex() {
     const [statusFilter, setStatusFilter] = useState('');
     const [groupFilter, setGroupFilter] = useState('');
     const [priorityFilter, setPriorityFilter] = useState('');
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
+    const [bulkProgress, setBulkProgress] = useState('');
 
     const filteredItems = useMemo(() => {
         return workItems.filter((item) => {
@@ -69,9 +72,9 @@ export default function WorkItemsIndex() {
                 item.title.toLowerCase().includes(search.toLowerCase()) ||
                 item.description?.toLowerCase().includes(search.toLowerCase());
 
-            const matchesStatus = !statusFilter || String(item.status?.id) === statusFilter;
-            const matchesGroup = !groupFilter || String(item.group?.id) === groupFilter;
-            const matchesPriority = !priorityFilter || item.priority === priorityFilter;
+            const matchesStatus = !statusFilter || statusFilter ==='all' || String(item.status?.id) === statusFilter;
+            const matchesGroup = !groupFilter || groupFilter === 'all' || String(item.group?.id) === groupFilter;
+            const matchesPriority = !priorityFilter || priorityFilter ==='all' || item.priority === priorityFilter;
 
             return matchesSearch && matchesStatus && matchesGroup && matchesPriority;
         });
@@ -81,6 +84,38 @@ export default function WorkItemsIndex() {
         if (confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
             router.delete(`/projects/${project.id}/work-items/${itemId}`, { preserveScroll: true });
         }
+    }
+
+    function toggleSelect(id: number) {
+        setSelectedIds((prev) =>
+            prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
+        );
+    }
+
+    function toggleSelectAll() {
+        if (selectedIds.length === filteredItems.length) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(filteredItems.map((item) => item.id));
+        }
+    }
+
+    function handleBulkProgress() {
+        if (!bulkProgress || selectedIds.length === 0) return;
+
+        router.patch(
+            `/projects/${project.id}/work-items/bulk-progress`,
+            {
+                work_item_ids: selectedIds,
+                progress: Number(bulkProgress),
+            },
+            {
+                onSuccess: () => {
+                    setSelectedIds([]);
+                    setBulkProgress('');
+                },
+            }
+        );
     }
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -111,6 +146,33 @@ export default function WorkItemsIndex() {
                     </div>
                 </div>
 
+                {/* Bulk Actions */}
+                {selectedIds.length > 0 && (
+                    <Card>
+                        <CardContent className="pt-4">
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm text-muted-foreground">
+                                    {selectedIds.length} item{selectedIds.length > 1 ? 's' : ''} selected
+                                </span>
+                                <div className="flex items-center gap-2 ml-auto">
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        placeholder="Progress %"
+                                        value={bulkProgress}
+                                        onChange={(e) => setBulkProgress(e.target.value)}
+                                        className="w-32"
+                                    />
+                                    <Button onClick={handleBulkProgress} disabled={!bulkProgress}>
+                                        Update Progress
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Filters */}
                 <Card>
                     <CardContent className="pt-6">
@@ -130,7 +192,7 @@ export default function WorkItemsIndex() {
                                         <SelectValue placeholder="All statuses" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value=" ">All statuses</SelectItem>
+                                        <SelectItem value="all">All statuses</SelectItem>
                                         {filters.statuses.map((s) => (
                                             <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>
                                         ))}
@@ -143,7 +205,7 @@ export default function WorkItemsIndex() {
                                         <SelectValue placeholder="All groups" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value=" ">All groups</SelectItem>
+                                        <SelectItem value="all">All groups</SelectItem>
                                         {filters.groups.map((g) => (
                                             <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
                                         ))}
@@ -156,7 +218,7 @@ export default function WorkItemsIndex() {
                                         <SelectValue placeholder="All priorities" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value=" ">All priorities</SelectItem>
+                                        <SelectItem value="all">All priorities</SelectItem>
                                         <SelectItem value="critical">Critical</SelectItem>
                                         <SelectItem value="high">High</SelectItem>
                                         <SelectItem value="medium">Medium</SelectItem>
@@ -178,19 +240,41 @@ export default function WorkItemsIndex() {
                             <div className="overflow-x-auto">
                                 <Table>
                                     <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Title</TableHead>
-                                            <TableHead>Status</TableHead>
-                                            <TableHead>Group</TableHead>
-                                            <TableHead>Priority</TableHead>
-                                            <TableHead>Due Date</TableHead>
-                                            <TableHead>Assignee</TableHead>
-                                            <TableHead className="sr-only">Actions</TableHead>
-                                        </TableRow>
+                                    <TableRow>
+                                        <TableHead className="w-12">
+                                            <button onClick={toggleSelectAll} className="flex items-center justify-center">
+                                                {selectedIds.length === filteredItems.length && filteredItems.length > 0 ? (
+                                                    <CheckSquare className="h-4 w-4" />
+                                                ) : (
+                                                    <Square className="h-4 w-4" />
+                                                )}
+                                            </button>
+                                        </TableHead>
+                                        <TableHead>Title</TableHead>
+                                        <TableHead>Status</TableHead>
+                                        <TableHead>Group</TableHead>
+                                        <TableHead>Priority</TableHead>
+                                        <TableHead>Progress</TableHead>
+                                        <TableHead>Due Date</TableHead>
+                                        <TableHead>Assignee</TableHead>
+                                        <TableHead className="sr-only">Actions</TableHead>
+                                    </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {filteredItems.map((item: WorkItemData) => (
                                             <TableRow key={item.id}>
+                                                <TableCell>
+                                                    <button
+                                                        onClick={() => toggleSelect(item.id)}
+                                                        className="flex items-center justify-center"
+                                                    >
+                                                        {selectedIds.includes(item.id) ? (
+                                                            <CheckSquare className="h-4 w-4 text-primary" />
+                                                        ) : (
+                                                            <Square className="h-4 w-4" />
+                                                        )}
+                                                    </button>
+                                                </TableCell>
                                                 <TableCell className="font-medium max-w-xs truncate">
                                                     {item.title}
                                                 </TableCell>
@@ -204,6 +288,19 @@ export default function WorkItemsIndex() {
                                                     <Badge variant={getPriorityVariant(item.priority)}>
                                                         {item.priority}
                                                     </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-16 bg-secondary rounded-full h-1.5">
+                                                            <div
+                                                                className="bg-primary rounded-full h-1.5"
+                                                                style={{ width: `${item.progress}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-xs text-muted-foreground w-8">
+                                                            {item.progress}%
+                                                        </span>
+                                                    </div>
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground">
                                                     {item.due_date}

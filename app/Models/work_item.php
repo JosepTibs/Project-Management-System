@@ -17,6 +17,7 @@ class work_item extends Model
         "assignee_id",
         "priority",
         "due_date",
+        "progress",
     ];
 
     protected function casts(): array
@@ -41,5 +42,10 @@ class work_item extends Model
     public function group(): BelongsTo
     {
         return $this->belongsTo(work_item_groups::class, 'group_id');
+    }
+
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assignee_id');
     }
 }

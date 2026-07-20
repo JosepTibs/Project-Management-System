@@ -12,13 +12,19 @@ class WorkItemStatusSeeder extends Seeder
     {
         $projects = projects::all();
 
-        $statusNames = ['To Do', 'In Progress', 'Under Review', 'Done'];
+        $statuses = [
+            ['name' => 'To Do',        'color' => '#6b7280'],
+            ['name' => 'In Progress',  'color' => '#3b82f6'],
+            ['name' => 'Under Review', 'color' => '#f59e0b'],
+            ['name' => 'Done',         'color' => '#10b981'],
+        ];
 
         foreach ($projects as $project) {
-            foreach ($statusNames as $order => $name) {
+            foreach ($statuses as $order => $status) {
                 work_item_statuses::create([
                     'project_id' => $project->id,
-                    'name' => $name,
+                    'name' => $status['name'],
+                    'color' => $status['color'],
                     'order' => $order + 1,
                 ]);
             }

@@ -12,6 +12,7 @@ class work_item_statuses extends Model
         "project_id",
         "name",
         "order",
+        "color",
     ];
 
     public function workItems(): HasMany

@@ -19,7 +19,12 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
+        // 'name',
+        "username",
+        "fname",
+        "mname",
+        "lname",
+        "sname",
         'email',
         'password',
     ];
@@ -45,6 +50,15 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Get the user's full name (concatenation of fname, mname, lname, sname).
+     */
+    public function getNameAttribute(): string
+    {
+        $parts = array_filter([$this->fname, $this->mname, $this->lname, $this->sname]);
+        return implode(' ', $parts) ?: $this->username;
     }
 
     public function roles(): MorphToMany

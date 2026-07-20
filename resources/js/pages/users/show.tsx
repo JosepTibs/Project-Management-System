@@ -19,7 +19,11 @@ interface Project {
 
 interface UserData {
     id: number;
-    name: string;
+    username: string;
+    fname: string;
+    mname: string;
+    lname: string;
+    sname: string;
     email: string;
     role: Role | null;
     created_at: string;
@@ -30,17 +34,23 @@ interface ShowUserPageProps extends Record<string, unknown> {
     user: UserData;
 }
 
+function formatFullName(user: UserData) {
+    const parts = [user.fname, user.mname, user.lname, user.sname].filter(Boolean);
+    return parts.join(' ');
+}
+
 export default function ShowUser() {
     const { user } = usePage<ShowUserPageProps>().props;
+    const fullName = formatFullName(user);
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Users', href: '/users' },
-        { title: user.name, href: `/users/${user.id}` },
+        { title: fullName, href: `/users/${user.id}` },
     ];
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={user.name} />
+            <Head title={fullName} />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
                     <Link href="/users">
@@ -49,7 +59,7 @@ export default function ShowUser() {
                             Back
                         </Button>
                     </Link>
-                    <h1 className="text-2xl font-bold">{user.name}</h1>
+                    <h1 className="text-2xl font-bold">{fullName}</h1>
                     <div className="ml-auto">
                         <Link href={`/users/${user.id}/edit`}>
                             <Button variant="outline" size="sm">
@@ -68,8 +78,12 @@ export default function ShowUser() {
                     <CardContent>
                         <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>
-                                <dt className="text-sm text-muted-foreground">Name</dt>
-                                <dd className="font-medium">{user.name}</dd>
+                                <dt className="text-sm text-muted-foreground">Username</dt>
+                                <dd className="font-medium">{user.username}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm text-muted-foreground">Full Name</dt>
+                                <dd className="font-medium">{fullName}</dd>
                             </div>
                             <div>
                                 <dt className="text-sm text-muted-foreground">Email</dt>

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { ArrowLeft, Users, FileText, Edit, Target, ChevronDown, BarChart3 } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Edit, Target, ChevronDown, BarChart3, Columns3 } from 'lucide-react';
 import { GanttChart } from '@/components/gantt-chart';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
@@ -50,6 +50,8 @@ interface ProjectData {
     name: string;
     description: string;
     item_prefix: string;
+    created_by: number;
+    creator_name: string;
     completion_percentage: number;
     members: Member[];
     work_items: WorkItem[];
@@ -117,6 +119,10 @@ export default function ShowProject() {
                             <div>
                                 <dt className="text-sm text-muted-foreground">Name</dt>
                                 <dd className="font-medium">{project.name}</dd>
+                            </div>
+                            <div>
+                                <dt className="text-sm text-muted-foreground">Created By</dt>
+                                <dd className="font-medium">{project.creator_name || 'Unknown'}</dd>
                             </div>
                             <div>
                                 <dt className="text-sm text-muted-foreground">Item Prefix</dt>
@@ -188,9 +194,20 @@ export default function ShowProject() {
                                     <FileText className="h-4 w-4" />
                                     Work Items ({project.work_items.length})
                                 </CardTitle>
-                                <Link href={`/projects/${project.id}/work-items`}>
-                                    <Button variant="outline" size="sm">View All</Button>
-                                </Link>
+                                <div className="flex items-center gap-2">
+                        <Link href={`/projects/${project.id}/kanban`}>
+                            <Button variant="outline" size="sm">
+                                <Columns3 className="mr-1.5 h-4 w-4" />
+                                Kanban
+                            </Button>
+                        </Link>
+                        <Link href={`/projects/${project.id}/work-items`}>
+                            <Button variant="outline" size="sm">View All</Button>
+                        </Link>
+                        <Link href={`/projects/${project.id}/groups`}>
+                            <Button variant="outline" size="sm">Groups</Button>
+                        </Link>
+                                </div>
                             </div>
                         </CardHeader>
                         <CardContent className="p-4">
@@ -303,8 +320,8 @@ export default function ShowProject() {
                                     <div key={milestone.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3">
                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                             <h4 className="text-sm font-medium truncate">{milestone.name}</h4>
-                                            <Badge variant={milestone.completed_at ? 'default' : 'secondary'} className="text-[10px] h-5 shrink-0">
-                                                {milestone.completed_at ? 'Done' : 'Active'}
+                                            <Badge variant={milestone.completed_at && Math.round(Math.min(100, milestone.completion_percentage)) >= 100 ? 'default' : 'secondary'} className="text-[10px] h-5 shrink-0">
+                                                {milestone.completed_at && Math.round(Math.min(100, milestone.completion_percentage)) >= 100 ? 'Done' : 'Active'}
                                             </Badge>
                                         </div>
                                         <p className="hidden sm:block text-xs text-muted-foreground truncate max-w-[200px]">{milestone.description}</p>

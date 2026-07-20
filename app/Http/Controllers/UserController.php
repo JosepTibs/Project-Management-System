@@ -23,7 +23,11 @@ class UserController extends Controller
             ->map(function ($user) {
                 return [
                     'id' => $user->id,
-                    'name' => $user->name,
+                    'username'=>$user->username,
+                    'fname' => $user->fname,
+                    'mname'=> $user->mname,
+                    'lname'=> $user->lname,
+                    'sname'=> $user->sname,
                     'email' => $user->email,
                     'email_verified_at' => $user->email_verified_at,
                     'role' => $user->roles->first()?->only(['id', 'name']),
@@ -55,14 +59,22 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'username' => 'required|string|max:255',
+            'fname' => 'required|string|max:255',
+            'mname' => 'nullable|string|max:255',
+            'lname' => 'required|string|max:255',
+            'sname' => 'nullable|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
             'role_id' => 'required|exists:roles,id',
         ]);
 
         $user = User::create([
-            'name' => $validated['name'],
+            'username' => $validated['username'],
+            'fname' => $validated['fname'],
+            'mname' => $validated['mname'],
+            'lname' => $validated['lname'],
+            'sname' => $validated['sname'],
             'email' => $validated['email'],
             'password' => bcrypt($validated['password']),
             'email_verified_at' => now(),
@@ -95,7 +107,11 @@ class UserController extends Controller
         return Inertia::render('users/show', [
             'user' => [
                 'id' => $user->id,
-                'name' => $user->name,
+                'username'=>$user->username,
+                'fname' => $user->fname,
+                'mname'=> $user->mname,
+                'lname'=> $user->lname,
+                'sname'=> $user->sname,
                 'email' => $user->email,
                 'role' => $user->roles->first()?->only(['id', 'name']),
                 'created_at' => $user->created_at->format('Y-m-d'),
@@ -112,7 +128,11 @@ class UserController extends Controller
         return Inertia::render('users/edit', [
             'user' => [
                 'id' => $user->id,
-                'name' => $user->name,
+                'username'=>$user->username,
+                'fname' => $user->fname,
+                'mname'=> $user->mname,
+                'lname'=> $user->lname,
+                'sname'=> $user->sname,
                 'email' => $user->email,
                 'role_id' => $user->roles->first()?->id,
             ],
@@ -123,14 +143,22 @@ class UserController extends Controller
     public function update(Request $request, User $user)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'username' => 'required|string|max:255',
+            'fname' => 'required|string|max:255',
+            'mname' => 'nullable|string|max:255',
+            'lname' => 'required|string|max:255',
+            'sname' => 'nullable|string|max:255',
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'password' => 'nullable|string|min:8',
             'role_id' => 'required|exists:roles,id',
         ]);
 
         $user->update([
-            'name' => $validated['name'],
+            'username' => $validated['username'],
+            'fname' => $validated['fname'],
+            'mname' => $validated['mname'],
+            'lname' => $validated['lname'],
+            'sname' => $validated['sname'],
             'email' => $validated['email'],
         ]);
 

@@ -31,7 +31,11 @@ interface CreateUserPageProps extends Record<string, unknown> {
 
 export default function CreateUser() {
     const { roles } = usePage<CreateUserPageProps>().props;
-    const [name, setName] = useState('');
+    const [username, setUserName] = useState('');
+    const [fname, setFirstName] = useState('');
+    const [mname, setMiddleName] = useState('');
+    const [lname, setLastName] = useState('');
+    const [sname, setSuffixName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
@@ -44,7 +48,11 @@ export default function CreateUser() {
         setProcessing(true);
 
         router.post('/users', {
-            name,
+            username,
+            fname,
+            mname,
+            lname,
+            sname,
             email,
             password,
             password_confirmation: passwordConfirmation,
@@ -82,17 +90,67 @@ export default function CreateUser() {
                         <form onSubmit={handleSubmit} className="space-y-6">
                             {/* Name */}
                             <div className="space-y-2">
-                                <Label htmlFor="name">Name</Label>
+                                <Label htmlFor="username">Username</Label>
                                 <Input
-                                    id="name"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="John Doe"
+                                    id="username"
+                                    value={username}
+                                    onChange={(e) => setUserName(e.target.value)}
+                                    placeholder="Alwayswannafly"
                                 />
-                                {errors.name && (
-                                    <p className="text-sm text-red-600">{errors.name}</p>
+                                {errors.username && (
+                                    <p className="text-sm text-red-600">{errors.username}</p>
                                 )}
                             </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                <Label htmlFor="fname">First Name</Label>
+                                <Input
+                                  id="fname"
+                                  value={fname}
+                                  onChange={(e) => setFirstName(e.target.value)}
+                                  placeholder="Joseph Daniel"
+                                />
+                                 {errors.fname && (
+                                    <p className="text-sm text-red-600">{errors.fname}</p>
+                                )}
+                              </div>
+                                <div className = "space-y-2">
+                                <Label htmlFor="mname">Middle name</Label>
+                                <Input
+                                    id="mname"
+                                    value={mname}
+                                    onChange={(e) => setMiddleName(e.target.value)}
+                                    placeholder="Divine"
+                                />
+                                {errors.mname && (
+                                    <p className="text-sm text-red-600">{errors.fname}</p>
+                                )}</div>
+                                <div className = "space-y-2">
+                                <Label htmlFor="lname">Last Name</Label>
+                                <Input
+                                    id="lname"
+                                    value={lname}
+                                    onChange={(e) => setLastName(e.target.value)}
+                                    placeholder="Teves"
+                                />
+                                {errors.lname && (
+                                    <p className="text-sm text-red-600">{errors.lname}</p>
+                                )}
+                                </div>
+                                <div className = "space-y-2">
+                                 <Label htmlFor="sname">Suffix </Label>
+                                <Input
+                                    id="sname"
+                                    value={sname}
+                                    onChange={(e) => setSuffixName(e.target.value)}
+                                    placeholder="Jr"
+                                />
+                                {errors.lname && (
+                                    <p className="text-sm text-red-600">{errors.lname}</p>
+                                )}
+                                </div>
+                            </div>
+                            
 
                             {/* Email */}
                             <div className="space-y-2">

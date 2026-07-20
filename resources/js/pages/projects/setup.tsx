@@ -12,7 +12,11 @@ import { useState } from 'react';
 
 interface UserOption {
     id: number;
-    name: string;
+    username: string;
+    fname: string;
+    mname: string;
+    lname: string;
+    sname: string;
     email: string;
 }
 
@@ -88,7 +92,7 @@ export default function ProjectSetup() {
     const [processing, setProcessing] = useState(false);
 
     const filteredUsers = allUsers.filter(u =>
-        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
         u.email.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
@@ -194,7 +198,7 @@ export default function ProjectSetup() {
                                         onClick={() => toggleUser(user.id)}
                                     >
                                         {selected && <Check className="mr-1 h-3 w-3" />}
-                                        {user.name}
+                                        {user.username}
                                     </Badge>
                                 );
                             })}
@@ -344,7 +348,7 @@ export default function ProjectSetup() {
                                         >
                                             <option value="">Unassigned</option>
                                             {allUsers.filter(u => selectedUserIds.includes(u.id)).map(u => (
-                                                <option key={u.id} value={u.id}>{u.name}</option>
+                                                <option key={u.id} value={u.id}>{u.username}</option>
                                             ))}
                                         </select>
                                     </div>

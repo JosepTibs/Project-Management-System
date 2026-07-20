@@ -88,13 +88,13 @@ const TaskListTable: React.FC<{
                             style={{ width: rowWidth }}
                         >
                             <span
-                                className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                className={`w-2 h-2 rounded-full shrink-0 ${
                                     task.type === 'milestone' ? 'bg-amber-500' : 'bg-indigo-500'
                                 }`}
                             />
                             <span className="truncate text-foreground text-sm">{task.name}</span>
                             {task.type === 'milestone' && (
-                                <span className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-medium flex-shrink-0">
+                                <span className="text-[10px] uppercase tracking-wider text-amber-600 dark:text-amber-400 font-medium shrink-0">
                                     Milestone
                                 </span>
                             )}

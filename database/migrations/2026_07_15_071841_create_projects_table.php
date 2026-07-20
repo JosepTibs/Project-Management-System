@@ -14,9 +14,9 @@ return new class extends Migration
         Schema::create('projects', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->unsignedBigInteger('created_by');
             $table->text('description');
             $table->string('item_prefix');
-            
             $table->timestamps();
             $table->softDeletes();
         });

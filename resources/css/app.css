@@ -221,3 +221,49 @@
     color: var(--card-foreground) !important;
     box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1) !important;
 }
+
+/* WebKit browsers (Chrome, Safari, Edge) */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+    cursor: pointer;
+}
+
+/* Dark mode - make calendar icon white */
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+}
+
+/* Light mode - make calendar icon dark */
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(0);
+}
+
+/* Firefox */
+input[type="date"]::-moz-calendar-picker-indicator {
+    filter: invert(1);
+}
+
+.dark input[type="date"]::-moz-calendar-picker-indicator {
+    filter: invert(1);
+}
+
+/* Dark mode select dropdown fixes */
+.dark [data-radix-select-content][data-state="open"] {
+    background-color: hsl(0, 0%, 3.9%) !important;
+    color: hsl(0, 0%, 98%) !important;
+}
+
+.dark [data-radix-select-item] {
+    color: hsl(0, 0%, 98%) !important;
+}
+
+.dark [data-radix-select-item][data-highlighted] {
+    background-color: hsl(0, 0%, 14.9%) !important;
+    color: hsl(0, 0%, 98%) !important;
+}
+
+/* Additional fallback for select dropdown in dark mode */
+.dark .bg-popover {
+    background-color: hsl(0, 0%, 3.9%) !important;
+    color: hsl(0, 0%, 98%) !important;
+}

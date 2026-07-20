@@ -18,7 +18,7 @@ class ProjectSetupController extends Controller
     {
         $project->load(['members.user', 'workItemGroups', 'milestones']);
 
-        $allUsers = User::select('id', 'name', 'email')->orderBy('name')->get();
+        $allUsers = User::select('id', 'username', 'email')->orderBy('username')->get();
 
         return Inertia::render('projects/setup', [
             'project' => [
@@ -29,13 +29,13 @@ class ProjectSetupController extends Controller
             ],
             'allUsers' => $allUsers->map(fn($u) => [
                 'id' => $u->id,
-                'name' => $u->name,
+                'username' => $u->username,
                 'email' => $u->email,
             ]),
             'members' => $project->members->map(fn($m) => [
                 'id' => $m->id,
                 'user_id' => $m->user_id,
-                'user_name' => $m->user?->name,
+                'user_name' => $m->user?->username,
                 'user_email' => $m->user?->email,
             ]),
             'workItemGroups' => $project->workItemGroups->map(fn($g) => [
@@ -57,6 +57,46 @@ class ProjectSetupController extends Controller
                 'id' => $s->id,
                 'name' => $s->name,
             ]),
+        ]);
+    }
+
+    public function groupsIndex(projects $project)
+    {
+        $project->load(['workItemGroups.workItems.status', 'workItemGroups.workItems.assignee']);
+
+        $groups = $project->workItemGroups->map(function ($group) {
+            $items = $group->workItems;
+            $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : 0;
+
+            return [
+                'id' => $group->id,
+                'name' => $group->name,
+                'description' => $group->description,
+                'start_date' => $group->start_date?->format('Y-m-d'),
+                'end_date' => $group->end_date?->format('Y-m-d'),
+                'milestone_id' => $group->milestone_id,
+                'completion_percentage' => $avgProgress,
+                'items_count' => $items->count(),
+                'work_items' => $items->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'title' => $item->title,
+                        'priority' => $item->priority,
+                        'due_date' => $item->due_date?->format('Y-m-d'),
+                        'progress' => $item->progress ?? 0,
+                        'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
+                        'assignee' => $item->assignee ? ['name' => $item->assignee->name] : null,
+                    ];
+                })->toArray(),
+            ];
+        })->toArray();
+
+        return Inertia::render('projects/groups', [
+            'project' => [
+                'id' => $project->id,
+                'name' => $project->name,
+            ],
+            'groups' => $groups,
         ]);
     }
 

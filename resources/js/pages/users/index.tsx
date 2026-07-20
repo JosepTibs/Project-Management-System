@@ -34,7 +34,11 @@ interface Role {
 
 interface UserItem {
     id: number;
-    name: string;
+    username: string;
+    fname: string;
+    mname: string;
+    lname: string;
+    sname: string;
     email: string;
     email_verified_at: string | null;
     role: { id: number; name: string } | null;
@@ -49,7 +53,12 @@ interface UsersPageProps extends Record<string, unknown> {
         role: string | null;
     };
 }
+function formatFullName(user: UserItem){
 
+    const parts = [user.fname,user.mname,user.lname,user.sname].filter(Boolean);
+    return parts.join(' ');
+
+}
 function getRoleBadgeVariant(roleName: string) {
     switch (roleName?.toLowerCase()) {
         case 'admin':
@@ -65,8 +74,10 @@ function getRoleBadgeVariant(roleName: string) {
 const globalFilterFn: FilterFn<UserItem> = (row, columnId, filterValue: string) => {
     const search = filterValue.toLowerCase();
     const user = row.original;
+    const fullName = formatFullName(user);
     return (
-        user.name.toLowerCase().includes(search) ||
+        fullName.toLowerCase().includes(search) ||
+        user.username.toLowerCase().includes(search)||
         user.email.toLowerCase().includes(search) ||
         (user.role?.name ?? '').toLowerCase().includes(search)
     );
@@ -82,13 +93,14 @@ export default function UsersIndex() {
 
     // Apply role filter to data
     const filteredData = useMemo(() => {
-        if (!roleFilter) return users;
+        if (!roleFilter || roleFilter ==='all') return users;
         return users.filter((user) => user.role?.id === Number(roleFilter));
     }, [users, roleFilter]);
 
     const columns = useMemo(
         () => [
-            columnHelper.accessor('name', {
+
+            columnHelper.accessor('username', {
                 header: ({ column }) => {
                     const isSorted = column.getIsSorted();
                     return (
@@ -96,7 +108,7 @@ export default function UsersIndex() {
                             className="flex items-center gap-1 font-medium hover:text-foreground"
                             onClick={() => column.toggleSorting()}
                         >
-                            Name
+                            Username
                             {isSorted === 'asc' ? (
                                 <ArrowUp className="h-3 w-3" />
                             ) : isSorted === 'desc' ? (
@@ -113,6 +125,37 @@ export default function UsersIndex() {
                     </Link>
                 ),
             }),
+
+            columnHelper.display({
+                id: 'name',
+                header: ({ column}) => {
+                     const isSorted = column.getIsSorted();
+                     return(
+                        <button className ="flex items-center gap-1 font-medium hover:text-foreground"
+                        onClick={()=> column.toggleSorting()}
+                        >
+                            Name
+                            {isSorted === 'asc' ? (
+                                <ArrowUp className = 'h-3 w-3'/>
+                            ): isSorted === 'desc' ? (
+                                <ArrowDown className = 'h-3 w-3'/>
+                            ): (
+                                <ArrowUpDown className = 'h-3 w-3 opacity-50'/>
+                            ) }
+                            
+                        </button>
+                     );
+                },
+                cell: ({row}) =>{
+                    const fullName = formatFullName(row.original);
+                    return(
+                        <Link href={`/users/${row.original.id}`} className ="font-medium hover:underline">
+                             {fullName}
+                        </Link>
+                    );
+                },
+            }),
+
             columnHelper.accessor('email', {
                 header: ({ column }) => {
                     const isSorted = column.getIsSorted();
@@ -197,7 +240,7 @@ export default function UsersIndex() {
                                 variant="outline"
                                 size="sm"
                                 className="text-red-600 hover:text-red-700"
-                                onClick={() => handleDelete(user.id, user.name)}
+                                onClick={() => handleDelete(user.id, formatFullName(user))}
                             >
                                 <Trash2 className="h-4 w-4" />
                             </Button>
@@ -264,7 +307,7 @@ export default function UsersIndex() {
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                 <Input
-                                    placeholder="Search by name, email, or role..."
+                                    placeholder="Search by username, name, email, or role..."
                                     value={globalFilter}
                                     onChange={(e) => setGlobalFilter(e.target.value)}
                                     className="pl-9"
@@ -276,7 +319,7 @@ export default function UsersIndex() {
                                         <SelectValue placeholder="All roles" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value=" ">All roles</SelectItem>
+                                        <SelectItem value="all">All roles</SelectItem>
                                         {roles.map((role) => (
                                             <SelectItem key={role.id} value={String(role.id)}>
                                                 {role.name}
@@ -405,7 +448,7 @@ export default function UsersIndex() {
                                                             : 'outline'
                                                     }
                                                     size="sm"
-                                                    className="min-w-[32px]"
+                                                    className="min-w-8"
                                                     onClick={() => table.setPageIndex(page - 1)}
                                                 >
                                                     {page}

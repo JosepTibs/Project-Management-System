@@ -33,6 +33,7 @@ interface WorkItemData {
     assignee_id: number;
     priority: string;
     due_date: string;
+    progress: number;
 }
 
 interface EditWorkItemPageProps extends Record<string, unknown> {
@@ -52,6 +53,7 @@ export default function EditWorkItem() {
     const [groupId, setGroupId] = useState(String(workItem.group_id));
     const [assigneeId, setAssigneeId] = useState(String(workItem.assignee_id));
     const [priority, setPriority] = useState(workItem.priority);
+    const [progress, setProgress] = useState(String(workItem.progress));
     const [dueDate, setDueDate] = useState(workItem.due_date);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
@@ -74,6 +76,7 @@ export default function EditWorkItem() {
             group_id: groupId,
             assignee_id: assigneeId,
             priority,
+            progress: Number(progress),
             due_date: dueDate,
         }, {
             onError: (errs) => {
@@ -196,6 +199,21 @@ export default function EditWorkItem() {
                                         </SelectContent>
                                     </Select>
                                     {errors.assignee_id && <p className="text-sm text-red-600">{errors.assignee_id}</p>}
+                                </div>
+
+                                {/* Progress */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="progress">Progress (%)</Label>
+                                    <Input
+                                        id="progress"
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={progress}
+                                        onChange={(e) => setProgress(e.target.value)}
+                                        placeholder="0"
+                                    />
+                                    {errors.progress && <p className="text-sm text-red-600">{errors.progress}</p>}
                                 </div>
 
                                 {/* Due Date */}

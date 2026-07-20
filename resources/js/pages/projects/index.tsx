@@ -19,6 +19,8 @@ interface ProjectItem {
     name: string;
     description: string;
     item_prefix: string;
+    created_by: number;
+    creator_name: string;
     members_count: number;
     work_items_count: number;
     completion_percentage: number;
@@ -104,6 +106,9 @@ export default function ProjectsIndex() {
                                             <FileText className="h-4 w-4" />
                                             {project.work_items_count} {project.work_items_count === 1 ? 'item' : 'items'}
                                         </span>
+                                    </div>
+                                    <div className="mt-2 text-xs text-muted-foreground">
+                                        Created by {project.creator_name || 'Unknown'}
                                     </div>
                                     <div className="mt-4">
                                         <div className="flex items-center justify-between text-sm mb-1">

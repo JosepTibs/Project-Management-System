@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\projects;
+use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -13,7 +14,8 @@ class ProjectsController extends Controller
      */
     public function index()
     {
-        $projects = projects::withCount('members', 'workItems')
+        $projects = projects::with('creator')
+            ->withCount('members', 'workItems')
             ->selectSub(function ($query) {
                 $query->selectRaw('ROUND(AVG(progress), 2)')
                     ->from('work_items')
@@ -25,6 +27,8 @@ class ProjectsController extends Controller
                 return [
                     'id' => $project->id,
                     'name' => $project->name,
+                    'created_by' => $project->created_by,
+                    'creator_name' => $project->creator?->name,
                     'description' => $project->description,
                     'item_prefix' => $project->item_prefix,
                     'members_count' => $project->members_count,
@@ -58,6 +62,7 @@ class ProjectsController extends Controller
             'description'=> 'nullable|string',
             'item_prefix'=> 'required|string|max:255',
         ]);
+            $validated['created_by'] = auth()->id();
             $project = projects::create($validated);
 
             return redirect()->route('projects.setup.show', $project->id)->with('success', 'Project created. Now set it up.');
@@ -68,12 +73,14 @@ class ProjectsController extends Controller
      */
     public function show(projects $project)
     {
-        $project->load(['members.user', 'workItems', 'milestones', 'workItemGroups.workItems']);
+        $project->load(['creator', 'members.user', 'workItems', 'milestones', 'workItemGroups.workItems']);
 
         return Inertia::render('projects/show', [
             'project' => [
                 'id' => $project->id,
                 'name' => $project->name,
+                'created_by' => $project->created_by,
+                'creator_name' => $project->creator?->name,
                 'description' => $project->description,
                 'item_prefix' => $project->item_prefix,
                 'completion_percentage' => $project->completion_percentage,
@@ -158,6 +165,51 @@ class ProjectsController extends Controller
         $project->update($validated);
 
         return redirect()->route('projects.index')->with('success', 'Project Updated Successfully');
+    }
+
+    public function kanban(projects $project)
+    {
+        $workItems = \App\Models\work_item::where('project_id', $project->id)
+            ->with(['status', 'assignee', 'group'])
+            ->get()
+            ->groupBy('status.name')
+            ->map(function ($items, $statusName) {
+                return [
+                    'status' => $statusName,
+                    'items' => $items->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'title' => $item->title,
+                            'priority' => $item->priority,
+                            'assignee_name' => $item->assignee?->name,
+                            'due_date' => $item->due_date?->format('Y-m-d'),
+                            'group_name' => $item->group?->name,
+                        ];
+                    })->values()->toArray(),
+                ];
+            })->values()->toArray();
+
+        $statuses = work_item_statuses::where('project_id', $project->id)
+            ->orderBy('order')
+            ->get(['id', 'name', 'color']);
+
+        // Ensure all statuses appear as columns even if empty
+        $columns = collect($statuses)->map(function ($status) use ($workItems) {
+            $existing = collect($workItems)->firstWhere('status', $status->name);
+            return $existing ?: [
+                'status' => $status->name,
+                'items' => [],
+            ];
+        })->toArray();
+
+        return Inertia::render('projects/kanban', [
+            'project' => [
+                'id' => $project->id,
+                'name' => $project->name,
+            ],
+            'columns' => $columns,
+            'statuses' => $statuses,
+        ]);
     }
 
     /**

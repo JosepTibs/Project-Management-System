@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 
 class projects extends Model
@@ -11,6 +12,7 @@ class projects extends Model
     //
     protected $fillable =[
         "name",
+        "created_by",
         "description",
         "item_prefix",
     ];
@@ -31,6 +33,10 @@ class projects extends Model
     public function milestones(): HasMany
     {
         return $this->hasMany(milestones::class,'project_id');
+    }
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
     protected function completionPercentage(): Attribute
     {
