@@ -11,9 +11,12 @@ Route::get('/', function () {
     return Inertia::render('welcome');
 })->name('home');
 
-Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+Route::get('dashboard', [DashboardController::class, 'index'])->middleware(['auth'])->name('dashboard');
+
 
 Route::resource('users', UserController::class);
+Route::get('profile', [App\Http\Controllers\ProfileController::class, 'show'])->middleware(['auth'])->name('profile.show');
 Route::resource('projects', ProjectsController::class);
 Route::resource('projects.work-items', WorkItemController::class);
 Route::get('projects/{project}/kanban', [App\Http\Controllers\ProjectsController::class, 'kanban'])->name('projects.kanban');

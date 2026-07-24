@@ -1,8 +1,10 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
-import { type BreadcrumbItem } from '@/types';
+import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { LogIn, LogOut, AlertTriangle, Monitor } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -48,12 +50,24 @@ interface DashboardStats {
     low_priority: number;
 }
 
+interface Activity {
+    id: number;
+    event: 'login' | 'logout' | 'failed';
+    user_name: string;
+    username: string;
+    ip_address: string | null;
+    user_agent: string | null;
+    date: string;
+    time: string;
+}
+
 interface DashboardPageProps extends Record<string, unknown> {
     stats: DashboardStats;
     statuses: Status[];
     recent_work_items: RecentWorkItem[];
     projects_overview: ProjectOverview[];
     team_distribution: TeamDistribution[];
+    recent_activities: Activity[];
 }
 
 function getPriorityBadgeVariant(priority: string) {
@@ -69,14 +83,75 @@ function getPriorityBadgeVariant(priority: string) {
     }
 }
 
+
+function getInitials(name: string | undefined | null): string {
+    if (!name) return '?';
+    const names = name.trim().split(' ');
+    if (names.length === 0) return '?';
+    if (names.length === 1) return names[0].charAt(0).toUpperCase();
+    return `${names[0].charAt(0)}${names[names.length - 1].charAt(0)}`.toUpperCase();
+}
+
 export default function Dashboard() {
-    const { stats, statuses, recent_work_items, projects_overview, team_distribution } =
+    const { stats, statuses, recent_work_items, projects_overview, team_distribution, recent_activities } =
         usePage<DashboardPageProps>().props;
+    const { auth } = usePage<SharedData>().props;
+    const user = auth.user;
+
+    const getEventBadge = (event: string) => {
+        switch (event) {
+            case 'login':
+                return { label: 'Login', variant: 'default' as const, icon: LogIn, className: 'text-green-600 border-green-600' };
+            case 'logout':
+                return { label: 'Logout', variant: 'outline' as const, icon: LogOut, className: 'text-muted-foreground' };
+            case 'failed':
+                return { label: 'Failed', variant: 'destructive' as const, icon: AlertTriangle, className: 'text-red-600 border-red-600' };
+            default:
+                return { label: event, variant: 'secondary' as const, icon: Monitor, className: '' };
+        }
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Dashboard" />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
+                {/* Account Details Card */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">My Account</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="flex items-start gap-6">
+                            <Avatar className="h-16 w-16 overflow-hidden rounded-full">
+                                <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
+                                <AvatarFallback className="rounded-lg bg-neutral-200 text-lg text-black dark:bg-neutral-700 dark:text-white">
+                                    {getInitials(user.name)}
+                                </AvatarFallback>
+                            </Avatar>
+                            <div className="grid flex-1 gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+                                <div>
+                                    <p className="text-xs text-muted-foreground">Name</p>
+                                    <p className="font-medium">{user.name}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground">Email</p>
+                                    <p className="font-medium">{user.email}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs text-muted-foreground">Member since</p>
+                                    <p className="font-medium">{user.created_at ? new Date(user.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : 'N/A'}</p>
+                                </div>
+                            </div>
+                            <Link
+                                href={route('profile.show')}
+                                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3 shrink-0"
+                            >
+                                View Profile
+                            </Link>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Stats Cards Row */}
                 <div className="grid auto-rows-min gap-4 md:grid-cols-4">
                     <Card>
@@ -328,6 +403,72 @@ export default function Dashboard() {
                         </CardContent>
                     </Card>
                 )}
+
+                {/* Recent Activity */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">Recent Activity</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        {recent_activities.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b text-left text-muted-foreground">
+                                            <th className="pb-2 font-medium">User</th>
+                                            <th className="pb-2 font-medium">Event</th>
+                                            <th className="pb-2 font-medium">IP Address</th>
+                                            <th className="pb-2 font-medium">Date</th>
+                                            <th className="pb-2 font-medium">Time</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {recent_activities.map((activity) => {
+                                            const badge = getEventBadge(activity.event);
+                                            const Icon = badge.icon;
+                                            return (
+                                                <tr key={activity.id} className="border-b last:border-0">
+                                                    <td className="py-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <Avatar className="h-6 w-6">
+                                                                <AvatarFallback className="rounded-md bg-neutral-200 text-xs text-black dark:bg-neutral-700 dark:text-white">
+                                                                    {getInitials(activity.user_name)}
+                                                                </AvatarFallback>
+                                                            </Avatar>
+                                                            <div>
+                                                                <p className="font-medium">{activity.user_name}</p>
+                                                                <p className="text-xs text-muted-foreground">@{activity.username}</p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-2">
+                                                        <Badge variant={badge.variant} className={badge.className}>
+                                                            <span className="flex items-center gap-1">
+                                                                <Icon className="h-3 w-3" />
+                                                                {badge.label}
+                                                            </span>
+                                                        </Badge>
+                                                    </td>
+                                                    <td className="py-2 text-muted-foreground">
+                                                        {activity.ip_address ?? 'N/A'}
+                                                    </td>
+                                                    <td className="py-2 text-muted-foreground">
+                                                        {activity.date}
+                                                    </td>
+                                                    <td className="py-2 text-muted-foreground">
+                                                        {activity.time}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
             </div>
         </AppLayout>
     );

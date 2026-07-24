@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { ArrowLeft, Check, Trash2, Plus, X, Users, FolderKanban, Target, FileText } from 'lucide-react';
+import { ArrowLeft, Check, Trash2, Plus, X, Users, FolderKanban, Target, FileText, AlertTriangle } from 'lucide-react';
 import { useState } from 'react';
 
 interface UserOption {
@@ -49,6 +49,17 @@ interface Status {
     name: string;
 }
 
+interface WorkItemForm {
+    id?: number;
+    title: string;
+    description: string;
+    priority: string;
+    due_date: string;
+    assignee_id: number | null;
+    group_id: number | null;
+    status_id: number | null;
+}
+
 interface SetupPageProps extends Record<string, unknown> {
     project: {
         id: number;
@@ -61,10 +72,11 @@ interface SetupPageProps extends Record<string, unknown> {
     workItemGroups: Group[];
     milestones: Milestone[];
     statuses: Status[];
+    workItems: WorkItemForm[];
 }
 
 export default function ProjectSetup() {
-    const { project, allUsers, members: initialMembers, workItemGroups: initialGroups, milestones: initialMilestones, statuses } = usePage<SetupPageProps>().props;
+    const { project, allUsers, members: initialMembers, workItemGroups: initialGroups, milestones: initialMilestones, statuses, workItems: initialWorkItems } = usePage<SetupPageProps>().props;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Projects', href: '/projects' },
@@ -76,20 +88,23 @@ export default function ProjectSetup() {
     const [selectedUserIds, setSelectedUserIds] = useState<number[]>(initialMembers.map(m => m.user_id));
     const [searchTerm, setSearchTerm] = useState('');
 
-    // Groups state
-    const [groups, setGroups] = useState<{ name: string; description: string; start_date: string; end_date: string }[]>(
-        initialGroups.map(g => ({ name: g.name, description: g.description || '', start_date: g.start_date || '', end_date: g.end_date || '' }))
+    // Groups state (track id so existing groups can be matched by DB id rather than index)
+    const [groups, setGroups] = useState<{ id?: number; name: string; description: string; start_date: string; end_date: string }[]>(
+        initialGroups.map(g => ({ id: g.id, name: g.name, description: g.description || '', start_date: g.start_date || '', end_date: g.end_date || '' }))
     );
 
-    // Milestones state
-    const [milestones, setMilestones] = useState<{ name: string; description: string; start_date: string; target_date: string }[]>(
-        initialMilestones.map(m => ({ name: m.name, description: m.description || '', start_date: m.start_date || '', target_date: m.target_date || '' }))
+    // Milestones state (track id so existing milestones can be matched by DB id)
+    const [milestones, setMilestones] = useState<{ id?: number; name: string; description: string; start_date: string; target_date: string }[]>(
+        initialMilestones.map(m => ({ id: m.id, name: m.name, description: m.description || '', start_date: m.start_date || '', target_date: m.target_date || '' }))
     );
 
-    // Work items state
-    const [workItems, setWorkItems] = useState<{ title: string; description: string; priority: string; due_date: string; assignee_id: number | null; group_id: number | null; status_id: number | null }[]>([]);
+    // Work items state (track id so existing work items can be matched by DB id)
+    const [workItems, setWorkItems] = useState<{ id?: number; title: string; description: string; priority: string; due_date: string; assignee_id: number | null; group_id: number | null; status_id: number | null }[]>(
+        initialWorkItems.map(w => ({ id: w.id, title: w.title, description: w.description || '', priority: w.priority, due_date: w.due_date || '', assignee_id: w.assignee_id, group_id: w.group_id, status_id: w.status_id }))
+    );
 
     const [processing, setProcessing] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
     const filteredUsers = allUsers.filter(u =>
         u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -139,12 +154,45 @@ export default function ProjectSetup() {
     }
 
     function handleSubmit() {
+        setErrorMessage(null);
+
+        const validatedGroups = groups.filter(g => g.name.trim());
+        const validatedMilestones = milestones.filter(m => m.name.trim());
+        const validatedWorkItems = workItems.filter(w => w.title.trim());
+
+        // Collect warnings
+        const warnings: string[] = [];
+
+        const groupItemsNoGroup = validatedWorkItems.filter(w => !w.group_id);
+        if (groupItemsNoGroup.length > 0) {
+            warnings.push(`${groupItemsNoGroup.length} work item(s) have no group assigned. They won't appear in any group view.`);
+        }
+
+        const groupNoDates = validatedGroups.filter(g => !g.start_date || !g.end_date);
+        if (groupNoDates.length > 0) {
+            warnings.push(`${groupNoDates.length} group(s) are missing start or end dates.`);
+        }
+
+        const milestoneNoDates = validatedMilestones.filter(m => !m.start_date || !m.target_date);
+        if (milestoneNoDates.length > 0) {
+            warnings.push(`${milestoneNoDates.length} milestone(s) are missing start or target dates.`);
+        }
+
+        const workItemNoPriority = validatedWorkItems.filter(w => !w.priority);
+        if (workItemNoPriority.length > 0) {
+            warnings.push(`${workItemNoPriority.length} work item(s) are missing a priority.`);
+        }
+
+        if (warnings.length > 0) {
+            setErrorMessage(warnings.join(' '));
+        }
+
         setProcessing(true);
         router.put(`/projects/${project.id}/setup`, {
             user_ids: selectedUserIds,
-            groups: groups.filter(g => g.name.trim()),
-            milestones: milestones.filter(m => m.name.trim()),
-            work_items: workItems.filter(w => w.title.trim()).map(w => ({
+            groups: validatedGroups,
+            milestones: validatedMilestones,
+            work_items: validatedWorkItems.map(w => ({
                 ...w,
                 assignee_id: w.assignee_id || null,
                 group_id: w.group_id || null,
@@ -322,6 +370,11 @@ export default function ProjectSetup() {
                                         <Label className="text-xs">Title</Label>
                                         <Input value={item.title} onChange={e => updateWorkItem(i, 'title', e.target.value)} placeholder="Item title" />
                                     </div>
+                                    <div className="flex-1 min-w-[150px] space-y-1">
+                                        <Label className="text-xs">Description</Label>
+                                        <Input value={item.description} onChange={e => updateWorkItem(i, 'description', e.target.value)} placeholder="Description" />
+                                    </div>
+                                
                                     <div className="w-28 space-y-1">
                                         <Label className="text-xs">Priority</Label>
                                         <select
@@ -360,8 +413,8 @@ export default function ProjectSetup() {
                                             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                                         >
                                             <option value="">No group</option>
-                                            {groups.filter(g => g.name.trim()).map((g, gi) => (
-                                                <option key={gi} value={gi + 1}>{g.name}</option>
+                                            {groups.filter(g => g.name.trim() && g.id != null).map((g, gi) => (
+                                                <option key={g.id} value={g.id}>{g.name}</option>
                                             ))}
                                         </select>
                                     </div>
@@ -373,6 +426,16 @@ export default function ProjectSetup() {
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Warning banner */}
+                {errorMessage && (
+                    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
+                            <div className="text-sm">{errorMessage}</div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Submit */}
                 <div className="flex justify-end gap-3">

@@ -94,12 +94,10 @@ export default function EditWorkItem() {
             <Head title={`Edit ${workItem.title}`} />
             <div className="flex h-full flex-1 flex-col items-center gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4 self-start">
-                    <Link href={`/projects/${project.id}/work-items`}>
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <Button  variant="outline"  size="sm" onClick={() => window.history.back()} >
+                         <ArrowLeft className="mr-2 h-4 w-4" />
+                         Back
+                     </Button>
                     <h1 className="text-2xl font-bold">Edit Work Item</h1>
                 </div>
 

@@ -10,13 +10,14 @@ use App\Models\milestones;
 use App\Models\work_item;
 use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Inertia\Inertia;
 
 class ProjectSetupController extends Controller
 {
     public function show(projects $project)
     {
-        $project->load(['members.user', 'workItemGroups', 'milestones']);
+        $project->load(['members.user', 'workItemGroups', 'milestones', 'workItems']);
 
         $allUsers = User::select('id', 'username', 'email')->orderBy('username')->get();
 
@@ -56,6 +57,16 @@ class ProjectSetupController extends Controller
             'statuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn($s) => [
                 'id' => $s->id,
                 'name' => $s->name,
+            ]),
+            'workItems' => $project->workItems->map(fn($w) => [
+                'id' => $w->id,
+                'title' => $w->title,
+                'description' => $w->description,
+                'priority' => $w->priority,
+                'due_date' => $w->due_date?->format('Y-m-d'),
+                'assignee_id' => $w->assignee_id,
+                'group_id' => $w->group_id,
+                'status_id' => $w->status_id,
             ]),
         ]);
     }
@@ -108,18 +119,21 @@ class ProjectSetupController extends Controller
             'user_ids.*' => 'exists:users,id',
             // Groups
             'groups' => 'nullable|array',
+            'groups.*.id' => 'nullable|integer|exists:work_item_groups,id',
             'groups.*.name' => 'required_with:groups|string|max:255',
             'groups.*.description' => 'nullable|string',
             'groups.*.start_date' => 'nullable|date',
             'groups.*.end_date' => 'nullable|date',
             // Milestones
             'milestones' => 'nullable|array',
+            'milestones.*.id' => 'nullable|integer|exists:milestones,id',
             'milestones.*.name' => 'required_with:milestones|string|max:255',
             'milestones.*.description' => 'nullable|string',
             'milestones.*.start_date' => 'nullable|date',
             'milestones.*.target_date' => 'nullable|date',
             // Work Items
             'work_items' => 'nullable|array',
+            'work_items.*.id' => 'nullable|integer|exists:work_items,id',
             'work_items.*.title' => 'required_with:work_items|string|max:255',
             'work_items.*.description' => 'nullable|string',
             'work_items.*.priority' => 'required_with:work_items|in:low,medium,high,critical',
@@ -140,28 +154,54 @@ class ProjectSetupController extends Controller
             }
         }
 
-        // Save groups
+        // Save groups — update existing, create new, delete removed
         if (isset($data['groups'])) {
-            $project->workItemGroups()->delete();
+            $submittedGroupIds = collect($data['groups'])->pluck('id')->filter()->toArray();
+            $project->workItemGroups()->whereNotIn('id', $submittedGroupIds)->delete();
+
             foreach ($data['groups'] as $group) {
-                $project->workItemGroups()->create($group);
+                $groupData = Arr::only($group, ['name', 'description', 'start_date', 'end_date']);
+                if (isset($group['id'])) {
+                    $project->workItemGroups()->where('id', $group['id'])->update($groupData);
+                } else {
+                    $groupData['project_id'] = $project->id;
+                    $project->workItemGroups()->create($groupData);
+                }
             }
         }
 
-        // Save milestones
+        // Save milestones — update existing, create new, delete removed
         if (isset($data['milestones'])) {
-            $project->milestones()->delete();
+            $submittedMilestoneIds = collect($data['milestones'])->pluck('id')->filter()->toArray();
+            $project->milestones()->whereNotIn('id', $submittedMilestoneIds)->delete();
+
             foreach ($data['milestones'] as $i => $milestone) {
-                $project->milestones()->create(array_merge($milestone, ['order' => $i + 1]));
+                $milestoneData = array_merge(
+                    Arr::only($milestone, ['name', 'description', 'start_date', 'target_date']),
+                    ['order' => $i + 1]
+                );
+                if (isset($milestone['id'])) {
+                    $project->milestones()->where('id', $milestone['id'])->update($milestoneData);
+                } else {
+                    $milestoneData['project_id'] = $project->id;
+                    $project->milestones()->create($milestoneData);
+                }
             }
         }
 
-        // Save work items
+        // Save work items — update existing, create new, delete removed
         if (isset($data['work_items'])) {
-            $project->workItems()->delete();
+            $submittedWorkItemIds = collect($data['work_items'])->pluck('id')->filter()->toArray();
+            $project->workItems()->whereNotIn('id', $submittedWorkItemIds)->delete();
+
             foreach ($data['work_items'] as $item) {
-                $item['project_id'] = $project->id;
-                work_item::create($item);
+                $itemData = Arr::only($item, ['title', 'description', 'priority', 'due_date', 'assignee_id', 'group_id', 'status_id']);
+                if (isset($item['id'])) {
+                    $project->workItems()->where('id', $item['id'])->update($itemData);
+                } else {
+                    $itemData['project_id'] = $project->id;
+                    work_item::create($itemData);
+                }
             }
         }
 

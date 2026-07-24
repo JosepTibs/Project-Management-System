@@ -173,7 +173,14 @@ export default function ShowProject() {
                                         <TableBody>
                                             {project.members.map((member: Member) => (
                                                 <TableRow key={member.id}>
-                                                    <TableCell className="font-medium">{member.user_name}</TableCell>
+                          
+                                         <Link href={`/users/${member.id}/edit`}
+                                         className="text-lg font-medium hover:underline leading-tight"> 
+                                        
+                                        <TableCell className="text-sm font-medium">{member.user_name}
+                                            </TableCell></Link>
+                                                                           
+                                                    
                                                     <TableCell className="text-muted-foreground">{member.user_email}</TableCell>
                                                 </TableRow>
                                             ))}
@@ -244,7 +251,12 @@ export default function ShowProject() {
                                                                 <TableBody>
                                                                     {groupItems.map((item: WorkItem) => (
                                                                         <TableRow key={item.id}>
-                                                                            <TableCell className="font-medium">{item.title}</TableCell>
+                                                                            
+                                                                             <Link
+                                                                             href={`/projects/${project.id}/work-items/${item.id}/edit`}
+                                                                             className="text-lg font-medium hover:underline leading-tight"
+                                                                         > <TableCell className=" text-sm font-medium">{item.title}</TableCell></Link>
+                                                                            
                                                                             <TableCell>
                                                                                 <Badge variant={getPriorityVariant(item.priority)}>
                                                                                     {item.priority}
