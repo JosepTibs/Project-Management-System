@@ -306,7 +306,7 @@ export default function UsersIndex() {
                         <div className="flex flex-col gap-4 sm:flex-row">
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input
+                                <Input id='meh'
                                     placeholder="Search by username, name, email, or role..."
                                     value={globalFilter}
                                     onChange={(e) => setGlobalFilter(e.target.value)}

@@ -9,6 +9,7 @@ use App\Models\work_item;
 use App\Models\work_item_statuses;
 use App\Models\work_item_groups;
 use App\Models\LoginActivity;
+use App\Models\activity_logs;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
@@ -85,9 +86,7 @@ class DashboardController extends Controller
             });
 
         // Recent login/logout activity across all users
-        $recentActivities = LoginActivity::with('user:id,username,fname,mname,lname,sname')
-            ->latest()
-            ->take(20)
+        $loginActivities = LoginActivity::with('user:id,username,fname,mname,lname,sname')
             ->get()
             ->map(function ($activity) {
                 $user = $activity->user;
@@ -95,14 +94,57 @@ class DashboardController extends Controller
                 $userName = $nameParts ? implode(' ', $nameParts) : ($user?->username ?? 'Unknown');
 
                 return [
-                    'id' => $activity->id,
+                    'id' => 'login-' . $activity->id,
+                    'type' => 'login',
                     'event' => $activity->event,
                     'user_name' => $userName,
                     'username' => $user?->username ?? 'unknown',
                     'ip_address' => $activity->ip_address,
                     'user_agent' => $activity->user_agent,
-                    'date' => $activity->created_at?->format('M d, Y'),
-                    'time' => $activity->created_at?->format('g:i A'),
+                    'created_at' => $activity->created_at,
+                ];
+            });
+
+        // Recent general activity logs (user creation, updates, etc.)
+        $generalActivities = activity_logs::with('user:id,username,fname,mname,lname,sname')
+            ->get()
+            ->map(function ($log) {
+                $user = $log->user;
+                $nameParts = array_filter([$user?->fname, $user?->mname, $user?->lname, $user?->sname]);
+                $userName = $nameParts ? implode(' ', $nameParts) : ($user?->username ?? 'Unknown');
+
+                return [
+                    'id' =>'general-' . $log->id,
+                    'type' => 'general',
+                    'event' => $log->event,
+                    'user_name' => $userName,
+                    'username' => $user?->username ?? 'unknown',
+                    'ip_address' => $log->ip_address,
+                    'user_agent' => $log->user_agent,
+                    'description' => $log->description,
+                    'created_at' => $log->created_at,
+                ];
+            });
+
+        // Merge and sort activities by date
+        $recentActivities = $loginActivities
+            ->merge($generalActivities)
+            ->sortByDesc('created_at')
+            ->take(20)
+            ->values()
+            ->map(function ($activity) {
+                return [
+                    'id' => $activity['id'],
+                    'type' => $activity['type'],
+                    'event' => $activity['event'],
+                    'user_name' => $activity['user_name'],
+                    'username' => $activity['username'],
+                    'ip_address' => $activity['ip_address'],
+                    'user_agent' => $activity['user_agent'],
+                    'description' => $activity['description'] ?? null,
+                    'properties' => $activity['properties'] ?? null,
+                    'date' => $activity['created_at']?->format('M d, Y'),
+                    'time' => $activity['created_at']?->format('g:i A'),
                 ];
             });
 

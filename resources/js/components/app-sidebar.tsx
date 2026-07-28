@@ -4,7 +4,7 @@ import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Users, Workflow, FileText, User } from 'lucide-react';
+import { BookOpen, Folder, LayoutGrid, Users, Workflow, FileText, User, ActivityIcon } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -34,12 +34,17 @@ const mainNavItems: NavItem[] = [
         url: '/work-items',
         icon: FileText,
     },
+    {
+        title: 'Activity Log',
+        url: '/activity-logs',
+        icon: ActivityIcon,
+    }
 ];
 
 const footerNavItems: NavItem[] = [
     {
-        title: 'test',
-        url: 'https://github.com/laravel/react-starter-kit',
+        title: 'Logout',
+        url: '/logout',
         icon: Folder,
     },
     {

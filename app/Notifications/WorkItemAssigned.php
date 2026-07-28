@@ -1,0 +1,63 @@
+<?php
+
+namespace App\Notifications;
+
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Notifications\Notification;
+use App\Models\work_item;
+
+class WorkItemAssigned extends Notification
+{
+    use Queueable;
+
+    /**
+     * Create a new notification instance.
+     */
+    protected $workItem;
+    protected $actorName;
+
+    public function __construct(work_item $workItem, string $actorName)
+    {
+        // 
+        $this->workItem = $workItem;
+        $this->actorName = $actorName;
+    }
+
+    /**
+     * Get the notification's delivery channels.
+     *
+     * @return array<int, string>
+     */
+    public function via($notifiable): array
+    {
+        return ['database'];
+    }
+
+ 
+    public function toDatabase($notifiable): array
+    {
+        return [
+            'message' => "{$this->actorName} assigned you to '{$this->workItem->title}'",
+            'work_item_id' => $this->workItem->id,
+            'project_id' => $this->workItem->project_id,
+            'project_name' => $this->workItem->project?->name ?? 'Unknown',
+            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
+            'type' => 'assigned',
+            'actor_name' => $this->actorName,
+        ];
+    }
+
+    /**
+     * Get the array representation of the notification.
+     *
+     * @return array<string, mixed>
+     */
+    public function toArray(object $notifiable): array
+    {
+        return [
+            //
+        ];
+    }
+}

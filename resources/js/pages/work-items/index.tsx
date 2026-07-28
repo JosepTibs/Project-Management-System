@@ -47,6 +47,7 @@ interface WorkItemsPageProps extends Record<string, unknown> {
     };
 }
 
+
 function getPriorityVariant(priority: string) {
     switch (priority) {
         case 'critical': return 'destructive' as const;
@@ -276,7 +277,9 @@ export default function WorkItemsIndex() {
                                                     </button>
                                                 </TableCell>
                                                 <TableCell className="font-medium max-w-xs truncate">
-                                                    {item.title}
+                                                   <Link href={`/projects/${project.id}/work-items/${item.id}`}>
+                                                   {item.title}
+                                                   </Link> 
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge variant="outline">{item.status?.name || '—'}</Badge>

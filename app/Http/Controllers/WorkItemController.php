@@ -13,6 +13,55 @@ use Inertia\Inertia;
 
 class WorkItemController extends Controller
 {
+    public function show(projects $project, work_item $workItem)
+    {
+        $workItem->load(['status', 'group', 'assignee', 'project']);
+
+        $comments = $workItem->comments()
+            ->whereNull('parent_id')
+            ->with(['user', 'replies.user'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($comment) {
+                return [
+                    'id' => $comment->id,
+                    'content' => $comment->content,
+                    'created_at' => $comment->created_at->diffForHumans(),
+                    'user' => [
+                        'id' => $comment->user->id,
+                        'name' => $comment->user->name,
+                    ],
+                    'replies' => $comment->replies->map(function ($reply) {
+                        return [
+                            'id' => $reply->id,
+                            'content' => $reply->content,
+                            'created_at' => $reply->created_at->diffForHumans(),
+                            'user' => [
+                                'id' => $reply->user->id,
+                                'name' => $reply->user->name,
+                            ],
+                        ];
+                    }),
+                ];
+            });
+
+        return Inertia::render('work-items/show', [
+            'workItems' => [
+                'id' => $workItem->id,
+                'title' => $workItem->title,
+                'description' => $workItem->description,
+                'priority' => $workItem->priority,
+                'due_date' => $workItem->due_date->format('Y-m-d'),
+                'progress' => $workItem->progress ?? 0,
+                'status' => $workItem->status ? ['id' => $workItem->status->id, 'name' => $workItem->status->name] : null,
+                'group' => $workItem->group ? ['id' => $workItem->group->id, 'name' => $workItem->group->name] : null,
+                'assignee' => $workItem->assignee ? ['id' => $workItem->assignee->id, 'name' => $workItem->assignee->name] : null,
+                'project' => $workItem->project ? ['id' => $workItem->project->id, 'name' => $workItem->project->name] : null,
+            ],
+            'comments' => $comments,
+        ]);
+    }
+
     public function globalIndex(Request $request)
     {
         $query = work_item::with(['status', 'group', 'assignee', 'project']);

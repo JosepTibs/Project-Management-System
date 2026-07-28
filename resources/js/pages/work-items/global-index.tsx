@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Search, ExternalLink } from 'lucide-react';
+import { Search, ExternalLink, Edit } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface Status {
@@ -173,8 +173,9 @@ export default function GlobalWorkItemsIndex() {
                                     <TableBody>
                                         {filteredItems.map((item: WorkItemData) => (
                                             <TableRow key={item.id}>
-                                                <TableCell className="font-medium max-w-xs truncate">
-                                                    {item.title}
+                                                <TableCell className="font-medium max-w-xs truncate hover:underline leading-tight">
+                                                    <Link href={`/projects/${item.project?.id}/work-items/${item.id}`}>
+                                                    {item.title} </Link>
                                                 </TableCell>
                                                 <TableCell>
                                                     <Link
@@ -186,7 +187,8 @@ export default function GlobalWorkItemsIndex() {
                                                     </Link>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <Badge variant="outline">{item.status?.name || '—'}</Badge>
+                                                    <Badge variant="outline">
+                                                        {item.status?.name || '—'}</Badge>
                                                 </TableCell>
                                                 <TableCell>
                                                     <Badge variant={getPriorityVariant(item.priority)}>
@@ -197,13 +199,23 @@ export default function GlobalWorkItemsIndex() {
                                                     {item.due_date}
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground">
+                                                   
                                                     {item.assignee?.name || '—'}
+                                                    
                                                 </TableCell>
+                                               
                                                 <TableCell>
+                                                    <div className="flex justify-end gap-2">
+                                                        <Link href={`/projects/${item.project?.id}/work-items/${item.id}`}>
+                                                            <Button variant="outline" size="sm" title="View">
+                                                                <ExternalLink className="h-4 w-4" />
+                                                            </Button>
+                                                        </Link>
+                                                    </div>
                                                     <div className="flex justify-end gap-2">
                                                         <Link href={`/projects/${item.project?.id}/work-items/${item.id}/edit`}>
                                                             <Button variant="outline" size="sm" title="Edit">
-                                                                <ExternalLink className="h-4 w-4" />
+                                                                <Edit className="h-4 w-4" />
                                                             </Button>
                                                         </Link>
                                                     </div>

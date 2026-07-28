@@ -52,11 +52,14 @@ interface DashboardStats {
 
 interface Activity {
     id: number;
-    event: 'login' | 'logout' | 'failed';
+    type: 'login' | 'general';
+    event: string;
     user_name: string;
     username: string;
     ip_address: string | null;
     user_agent: string | null;
+    description: string | null;
+    properties: Record<string, unknown> | null;
     date: string;
     time: string;
 }
@@ -419,6 +422,7 @@ export default function Dashboard() {
                                         <tr className="border-b text-left text-muted-foreground">
                                             <th className="pb-2 font-medium">User</th>
                                             <th className="pb-2 font-medium">Event</th>
+                                            <th className="pb-2 font-medium">Description</th>
                                             <th className="pb-2 font-medium">IP Address</th>
                                             <th className="pb-2 font-medium">Date</th>
                                             <th className="pb-2 font-medium">Time</th>
@@ -450,6 +454,9 @@ export default function Dashboard() {
                                                                 {badge.label}
                                                             </span>
                                                         </Badge>
+                                                    </td>
+                                                    <td className="py-2">
+                                                        <p className="text-sm">{activity.description || '-'}</p>
                                                     </td>
                                                     <td className="py-2 text-muted-foreground">
                                                         {activity.ip_address ?? 'N/A'}

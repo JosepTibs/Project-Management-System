@@ -9,36 +9,42 @@ class UserSeeder extends Seeder
 {
     public function run(): void
     {
-        // Create 1 admin user
-        User::create([
-            'username' => 'admin',
-            'fname' => 'Admin',
-            'lname' => 'User',
-            'email' => 'admin@example.com',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-
-        // Create 1 manager user
-        User::create([
-            'username' => 'manager',
-            'fname' => 'Manager',
-            'lname' => 'User',
-            'email' => 'manager@example.com',
-            'password' => bcrypt('password'),
-            'email_verified_at' => now(),
-        ]);
-
-        // Create 8 regular users
-        for ($i = 1; $i <= 8; $i++) {
-            User::create([
-                'username' => "user{$i}",
-                'fname' => "User",
-                'lname' => "{$i}",
-                'email' => "user{$i}@example.com",
+        // Create or update 1 admin user
+        User::updateOrCreate(
+            ['email' => 'admin@example.com'],
+            [
+                'username' => 'admin',
+                'fname' => 'Admin',
+                'lname' => 'User',
                 'password' => bcrypt('password'),
                 'email_verified_at' => now(),
-            ]);
+            ]
+        );
+
+        // Create or update 1 manager user
+        User::updateOrCreate(
+            ['email' => 'manager@example.com'],
+            [
+                'username' => 'manager',
+                'fname' => 'Manager',
+                'lname' => 'User',
+                'password' => bcrypt('password'),
+                'email_verified_at' => now(),
+            ]
+        );
+
+        // Create or update 8 regular users
+        for ($i = 1; $i <= 8; $i++) {
+            User::updateOrCreate(
+                ['email' => "user{$i}@example.com"],
+                [
+                    'username' => "user{$i}",
+                    'fname' => "User",
+                    'lname' => "{$i}",
+                    'password' => bcrypt('password'),
+                    'email_verified_at' => now(),
+                ]
+            );
         }
     }
 }

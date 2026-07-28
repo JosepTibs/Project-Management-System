@@ -145,7 +145,7 @@ class ProjectSetupController extends Controller
 
         // Save members
         if (isset($data['user_ids'])) {
-            $project->members()->whereNotIn('user_id', $data['user_ids'])->delete();
+            $project->members()->whereNotIn('user_id', $data['user_ids'])->get()->each->delete();
             $existingIds = $project->members()->pluck('user_id')->toArray();
             foreach ($data['user_ids'] as $userId) {
                 if (!in_array($userId, $existingIds)) {

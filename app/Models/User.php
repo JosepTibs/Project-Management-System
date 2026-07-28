@@ -4,14 +4,16 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Traits\LogsActivity;
 
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, LogsActivity;
 
     /**
      * The attributes that are mass assignable.
@@ -74,4 +76,16 @@ class User extends Authenticatable
     {
         return $this->morphToMany(roles::class, 'model', 'model_has_roles', 'model_id','role_id');
     }
+
+    public function notificationSettings(): HasOne
+    {
+        return $this->hasOne(NotificationSetting::class,)->withDefault([
+         'work_item_assigned' => true,
+            'status_changed'=> true,
+            'comment_added' => true,
+            'reminder_days_before' => 1,
+            ]);
+    }
 }
+
+

@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use App\Traits\LogsActivity;
 class work_item extends Model
 {
     //
+    use LogsActivity;
     protected $fillable = [
         "project_id",
         "status_id",
@@ -47,5 +49,9 @@ class work_item extends Model
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assignee_id');
+    }
+    public function comments(): MorphMany
+    {
+        return $this->morphMany(comments::class,'commentable');
     }
 }

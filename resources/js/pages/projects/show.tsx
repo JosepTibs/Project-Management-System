@@ -171,19 +171,16 @@ export default function ShowProject() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {project.members.map((member: Member) => (
+                                        {project.members.map((member: Member) => (
                                                 <TableRow key={member.id}>
-                          
-                                         <Link href={`/users/${member.id}/edit`}
-                                         className="text-lg font-medium hover:underline leading-tight"> 
-                                        
-                                        <TableCell className="text-sm font-medium">{member.user_name}
-                                            </TableCell></Link>
-                                                                           
-                                                    
-                                                    <TableCell className="text-muted-foreground">{member.user_email}</TableCell>
-                                                </TableRow>
-                                            ))}
+                                                     <TableCell className="text-sm font-medium">
+                                                         <Link href={`/users/${member.id}/edit`} className="text-lg font-medium hover:underline leading-tight">
+                                                             {member.user_name}
+                                                         </Link>
+                                                     </TableCell>
+                                                     <TableCell className="text-muted-foreground">{member.user_email}</TableCell>
+                                                 </TableRow>
+                                             ))}
                                         </TableBody>
                                     </Table>
                                 </div>
@@ -249,22 +246,21 @@ export default function ShowProject() {
                                                                     </TableRow>
                                                                 </TableHeader>
                                                                 <TableBody>
-                                                                    {groupItems.map((item: WorkItem) => (
-                                                                        <TableRow key={item.id}>
-                                                                            
-                                                                             <Link
-                                                                             href={`/projects/${project.id}/work-items/${item.id}/edit`}
-                                                                             className="text-lg font-medium hover:underline leading-tight"
-                                                                         > <TableCell className=" text-sm font-medium">{item.title}</TableCell></Link>
-                                                                            
-                                                                            <TableCell>
-                                                                                <Badge variant={getPriorityVariant(item.priority)}>
-                                                                                    {item.priority}
-                                                                                </Badge>
-                                                                            </TableCell>
-                                                                            <TableCell className="text-muted-foreground">{item.due_date}</TableCell>
-                                                                        </TableRow>
-                                                                    ))}
+                                                                     {groupItems.map((item: WorkItem) => (
+                                                                         <TableRow key={item.id}>
+                                                                             <TableCell className="text-sm font-medium">
+                                                                                 <Link href={`/projects/${project.id}/work-items/${item.id}`} className="text-lg font-medium hover:underline leading-tight">
+                                                                                     {item.title}
+                                                                                 </Link>
+                                                                             </TableCell>
+                                                                             <TableCell>
+                                                                                 <Badge variant={getPriorityVariant(item.priority)}>
+                                                                                     {item.priority}
+                                                                                 </Badge>
+                                                                             </TableCell>
+                                                                             <TableCell className="text-muted-foreground">{item.due_date}</TableCell>
+                                                                         </TableRow>
+                                                                     ))}
                                                                 </TableBody>
                                                             </Table>
                                                         </div>

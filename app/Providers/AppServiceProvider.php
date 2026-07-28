@@ -2,8 +2,6 @@
 
 namespace App\Providers;
 
-use Illuminate\Auth\Events\Failed;
-use App\Listeners\LogFailedLoginAttempt;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,9 +20,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Event::listen(
-            Failed::class,
-            LogFailedLoginAttempt::class,
-        );
+        //
     }
 }
