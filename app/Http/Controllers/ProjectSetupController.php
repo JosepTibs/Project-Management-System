@@ -2,11 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
-use App\Models\projects;
-use App\Models\project_members;
-use App\Models\work_item_groups;
 use App\Models\milestones;
+use App\Models\project_members;
+use App\Models\projects;
+use App\Models\User;
 use App\Models\work_item;
 use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
@@ -17,9 +16,13 @@ class ProjectSetupController extends Controller
 {
     public function show(projects $project)
     {
-        $project->load(['members.user', 'workItemGroups', 'milestones', 'workItems']);
+        $project->load(['members.user', 'workItemGroups.milestone', 'workItemGroups' => fn ($q) => $q->orderBy('id', 'desc'), 'milestones' => fn ($q) => $q->orderBy('id', 'desc'), 'workItems' => fn ($q) => $q->orderBy('id', 'desc')]);
 
-        $allUsers = User::select('id', 'username', 'email')->orderBy('username')->get();
+        $allUsers = User::with('roles')
+            ->select('id', 'username', 'email', 'fname', 'lname')
+            ->get()
+            ->sortBy(fn ($u) => $u->roles->first()?->name ?? 'zzz')
+            ->values();
 
         return Inertia::render('projects/setup', [
             'project' => [
@@ -28,25 +31,27 @@ class ProjectSetupController extends Controller
                 'description' => $project->description,
                 'item_prefix' => $project->item_prefix,
             ],
-            'allUsers' => $allUsers->map(fn($u) => [
+            'allUsers' => $allUsers->map(fn ($u) => [
                 'id' => $u->id,
                 'username' => $u->username,
                 'email' => $u->email,
+                'role' => $u->roles->first()?->name ?? 'No Role',
             ]),
-            'members' => $project->members->map(fn($m) => [
+            'members' => $project->members->map(fn ($m) => [
                 'id' => $m->id,
                 'user_id' => $m->user_id,
                 'user_name' => $m->user?->username,
                 'user_email' => $m->user?->email,
             ]),
-            'workItemGroups' => $project->workItemGroups->map(fn($g) => [
+            'workItemGroups' => $project->workItemGroups->map(fn ($g) => [
                 'id' => $g->id,
                 'name' => $g->name,
                 'description' => $g->description,
                 'start_date' => $g->start_date?->format('Y-m-d'),
                 'end_date' => $g->end_date?->format('Y-m-d'),
+                'milestone_id' => $g->milestone_id,
             ]),
-            'milestones' => $project->milestones->map(fn($m) => [
+            'milestones' => $project->milestones->map(fn ($m) => [
                 'id' => $m->id,
                 'name' => $m->name,
                 'description' => $m->description,
@@ -54,11 +59,11 @@ class ProjectSetupController extends Controller
                 'target_date' => $m->target_date?->format('Y-m-d'),
                 'order' => $m->order,
             ]),
-            'statuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn($s) => [
+            'statuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
                 'id' => $s->id,
                 'name' => $s->name,
             ]),
-            'workItems' => $project->workItems->map(fn($w) => [
+            'workItems' => $project->workItems->map(fn ($w) => [
                 'id' => $w->id,
                 'title' => $w->title,
                 'description' => $w->description,
@@ -73,9 +78,9 @@ class ProjectSetupController extends Controller
 
     public function groupsIndex(projects $project)
     {
-        $project->load(['workItemGroups.workItems.status', 'workItemGroups.workItems.assignee']);
+        $project->load(['workItemGroups.milestone', 'workItemGroups.workItems.status', 'workItemGroups.workItems.assignee']);
 
-        $groups = $project->workItemGroups->map(function ($group) {
+        $groups = $project->workItemGroups->sortByDesc('id')->map(function ($group) {
             $items = $group->workItems;
             $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : 0;
 
@@ -86,6 +91,7 @@ class ProjectSetupController extends Controller
                 'start_date' => $group->start_date?->format('Y-m-d'),
                 'end_date' => $group->end_date?->format('Y-m-d'),
                 'milestone_id' => $group->milestone_id,
+                'milestone' => $group->milestone ? ['id' => $group->milestone->id, 'name' => $group->milestone->name] : null,
                 'completion_percentage' => $avgProgress,
                 'items_count' => $items->count(),
                 'work_items' => $items->map(function ($item) {
@@ -119,11 +125,12 @@ class ProjectSetupController extends Controller
             'user_ids.*' => 'exists:users,id',
             // Groups
             'groups' => 'nullable|array',
-            'groups.*.id' => 'nullable|integer|exists:work_item_groups,id',
+            'groups.*.id' => 'nullable|integer',
             'groups.*.name' => 'required_with:groups|string|max:255',
             'groups.*.description' => 'nullable|string',
             'groups.*.start_date' => 'nullable|date',
             'groups.*.end_date' => 'nullable|date',
+            'groups.*.milestone_id' => 'nullable|integer|exists:milestones,id',
             // Milestones
             'milestones' => 'nullable|array',
             'milestones.*.id' => 'nullable|integer|exists:milestones,id',
@@ -139,7 +146,7 @@ class ProjectSetupController extends Controller
             'work_items.*.priority' => 'required_with:work_items|in:low,medium,high,critical',
             'work_items.*.due_date' => 'nullable|date',
             'work_items.*.assignee_id' => 'nullable|exists:users,id',
-            'work_items.*.group_id' => 'nullable|exists:work_item_groups,id',
+            'work_items.*.group_id' => 'nullable|integer',
             'work_items.*.status_id' => 'nullable|exists:work_item_statuses,id',
         ]);
 
@@ -148,7 +155,7 @@ class ProjectSetupController extends Controller
             $project->members()->whereNotIn('user_id', $data['user_ids'])->get()->each->delete();
             $existingIds = $project->members()->pluck('user_id')->toArray();
             foreach ($data['user_ids'] as $userId) {
-                if (!in_array($userId, $existingIds)) {
+                if (! in_array($userId, $existingIds)) {
                     project_members::create(['project_id' => $project->id, 'user_id' => $userId]);
                 }
             }
@@ -156,16 +163,23 @@ class ProjectSetupController extends Controller
 
         // Save groups — update existing, create new, delete removed
         if (isset($data['groups'])) {
-            $submittedGroupIds = collect($data['groups'])->pluck('id')->filter()->toArray();
+            $submittedGroupIds = collect($data['groups'])->pluck('id')->filter(function ($id) {
+                return $id > 0;
+            })->toArray();
             $project->workItemGroups()->whereNotIn('id', $submittedGroupIds)->delete();
 
+            $tempIdMap = [];
+
             foreach ($data['groups'] as $group) {
-                $groupData = Arr::only($group, ['name', 'description', 'start_date', 'end_date']);
-                if (isset($group['id'])) {
+                $groupData = Arr::only($group, ['name', 'description', 'start_date', 'end_date', 'milestone_id']);
+                if (isset($group['id']) && $group['id'] > 0) {
                     $project->workItemGroups()->where('id', $group['id'])->update($groupData);
                 } else {
                     $groupData['project_id'] = $project->id;
-                    $project->workItemGroups()->create($groupData);
+                    $newGroup = $project->workItemGroups()->create($groupData);
+                    if (isset($group['id']) && $group['id'] < 0) {
+                        $tempIdMap[$group['id']] = $newGroup->id;
+                    }
                 }
             }
         }
@@ -196,6 +210,11 @@ class ProjectSetupController extends Controller
 
             foreach ($data['work_items'] as $item) {
                 $itemData = Arr::only($item, ['title', 'description', 'priority', 'due_date', 'assignee_id', 'group_id', 'status_id']);
+
+                // Map temp group_id to real ID
+                if (isset($itemData['group_id']) && $itemData['group_id'] < 0 && isset($tempIdMap[$itemData['group_id']])) {
+                    $itemData['group_id'] = $tempIdMap[$itemData['group_id']];
+                }
                 if (isset($item['id'])) {
                     $project->workItems()->where('id', $item['id'])->update($itemData);
                 } else {

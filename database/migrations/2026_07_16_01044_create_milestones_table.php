@@ -18,7 +18,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->date('start_date')->nullable();
             $table->date('target_date')->nullable();
-            $table->timestamp('completed_at');
+            $table->timestamp('completed_at')->nullable();
             $table->unsignedInteger('order');
             $table->timestamps();
 

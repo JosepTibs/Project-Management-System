@@ -53,12 +53,10 @@ export default function ShowUser() {
             <Head title={fullName} />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
-                    <Link href="/users">
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <Button  variant="outline"  size="sm" onClick={() => window.history.back()} >
+                         <ArrowLeft className="mr-2 h-4 w-4" />
+                         Back
+                     </Button>
                     <h1 className="text-2xl font-bold">{fullName}</h1>
                     <div className="ml-auto">
                         <Link href={`/users/${user.id}/edit`}>

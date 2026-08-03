@@ -3,17 +3,18 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Traits\LogsActivity;
+use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use App\Traits\LogsActivity;
 
 class User extends Authenticatable
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, LogsActivity;
+    /** @use HasFactory<UserFactory> */
+    use HasFactory, LogsActivity, Notifiable;
 
     /**
      * The attributes that are mass assignable.
@@ -22,11 +23,11 @@ class User extends Authenticatable
      */
     protected $fillable = [
         // 'name',
-        "username",
-        "fname",
-        "mname",
-        "lname",
-        "sname",
+        'username',
+        'fname',
+        'mname',
+        'lname',
+        'sname',
         'email',
         'password',
     ];
@@ -69,23 +70,38 @@ class User extends Authenticatable
     public function getNameAttribute(): string
     {
         $parts = array_filter([$this->fname, $this->mname, $this->lname, $this->sname]);
+
         return implode(' ', $parts) ?: $this->username;
     }
 
+    /**
+     * Get the roles assigned to this user.
+     */
     public function roles(): MorphToMany
     {
-        return $this->morphToMany(roles::class, 'model', 'model_has_roles', 'model_id','role_id');
+        return $this->morphToMany(roles::class, 'model', 'model_has_roles', 'model_id', 'role_id');
     }
 
+    /**
+     * Get the notification settings for this user.
+     *
+     * Returns default settings if none exist.
+     */
     public function notificationSettings(): HasOne
     {
-        return $this->hasOne(NotificationSetting::class,)->withDefault([
-         'work_item_assigned' => true,
-            'status_changed'=> true,
+        return $this->hasOne(NotificationSetting::class)->withDefault([
+            'work_item_assigned' => true,
+            'status_changed' => true,
             'comment_added' => true,
             'reminder_days_before' => 1,
-            ]);
+        ]);
+    }
+
+    /**
+     * Get the notifications for this user.
+     */
+    public function notifications()
+    {
+        return $this->morphMany(Notification::class, 'notifiable')->orderBy('created_at', 'desc');
     }
 }
-
-

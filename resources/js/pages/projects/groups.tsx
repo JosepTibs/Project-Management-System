@@ -30,6 +30,7 @@ interface Group {
     start_date: string;
     end_date: string;
     milestone_id: number | null;
+    milestone?: { id: number; name: string } | null;
     completion_percentage: number;
     items_count: number;
     work_items: WorkItem[];
@@ -133,6 +134,7 @@ export default function GroupsIndex() {
                                                 {group.start_date && <span>Start: {group.start_date}</span>}
                                                 {group.start_date && group.end_date && <span>→</span>}
                                                 {group.end_date && <span>End: {group.end_date}</span>}
+                                                {group.milestone_id && <span>• Milestone: {group.milestone?.name || '—'}</span>}
                                             </div>
                                             {group.work_items.length > 0 ? (
                                                 <div className="overflow-x-auto">

@@ -20,6 +20,8 @@ class DatabaseSeeder extends Seeder
             MilestoneSeeder::class,
             WorkItemGroupSeeder::class,
             WorkItemSeeder::class,
+            ActivityLogSeeder::class,
+            LoginActivitySeeder::class,
         ]);
     }
 }

@@ -15,15 +15,15 @@ class ProjectMemberSeeder extends Seeder
         $users = User::all();
 
         foreach ($projects as $project) {
-            // Add admin to every project
-            $admin = User::where('email', 'admin@example.com')->first();
+            // Add first admin to every project
+            $admin = User::where('email', 'admin1@example.com')->first();
             project_members::create([
                 'project_id' => $project->id,
                 'user_id' => $admin->id,
             ]);
 
-            // Add manager to every project
-            $manager = User::where('email', 'manager@example.com')->first();
+            // Add first manager to every project
+            $manager = User::where('email', 'manager1@example.com')->first();
             project_members::create([
                 'project_id' => $project->id,
                 'user_id' => $manager->id,

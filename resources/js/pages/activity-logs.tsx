@@ -1,6 +1,5 @@
-import { Head, Link, usePage } from '@inertiajs/react';
-import { useState } from 'react';
-import { useForm } from '@inertiajs/react';
+import { Head, Link, usePage, router } from '@inertiajs/react';
+import { useState, useEffect } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type SharedData } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -80,24 +79,45 @@ export default function ActivityLogs() {
     const { auth } = usePage<SharedData>().props;
     const user = auth.user;
     const [showFilters, setShowFilters] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const form = useForm({
-        search: filters.search || '',
-        user_id: filters.user_id && filters.user_id !== 'all' ? filters.user_id : '',
-        event: filters.event && filters.event !== 'all' ? filters.event : '',
-        subject_type: filters.subject_type && filters.subject_type !== 'all' ? filters.subject_type : '',
-        date_from: filters.date_from || '',
-        date_to: filters.date_to || '',
-    });
+    const [search, setSearch] = useState(filters.search || '');
+    const [userId, setUserId] = useState(filters.user_id && filters.user_id !== 'all' ? filters.user_id : '');
+    const [event, setEvent] = useState(filters.event && filters.event !== 'all' ? filters.event : '');
+    const [subjectType, setSubjectType] = useState(filters.subject_type && filters.subject_type !== 'all' ? filters.subject_type : '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from || '');
+    const [dateTo, setDateTo] = useState(filters.date_to || '');
+
+    // Debounce timer
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            const params = new URLSearchParams();
+            if (search) params.set('search', search);
+            if (userId) params.set('user_id', userId);
+            if (event) params.set('event', event);
+            if (subjectType) params.set('subject_type', subjectType);
+            if (dateFrom) params.set('date_from', dateFrom);
+            if (dateTo) params.set('date_to', dateTo);
+
+            setIsLoading(true);
+            router.get('/activity-logs', Object.fromEntries(params), {
+                preserveState: true,
+                preserveScroll: true,
+                onFinish: () => setIsLoading(false),
+            });
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [search, userId, event, subjectType, dateFrom, dateTo]);
 
     // Count active filters
     const activeFilterCount = [
-        form.data.user_id,
-        form.data.event,
-        form.data.subject_type,
-        form.data.date_from,
-        form.data.date_to,
-        form.data.search,
+        userId,
+        event,
+        subjectType,
+        dateFrom,
+        dateTo,
+        search,
     ].filter(Boolean).length;
 
     const getEventBadge = (event: string) => {
@@ -174,8 +194,8 @@ export default function ActivityLogs() {
                                     <Label htmlFor="search">Search</Label>
                                     <Input
                                         id="search"
-                                        value={form.data.search}
-                                        onChange={(e) => form.setData('search', e.target.value)}
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
                                         placeholder="Search logs..."
                                     />
                                 </div>
@@ -184,8 +204,8 @@ export default function ActivityLogs() {
                                     <Label htmlFor="user_id">User</Label>
                                     <Input
                                         id="user_id"
-                                        value={form.data.user_id}
-                                        onChange={(e) => form.setData('user_id', e.target.value)}
+                                        value={userId}
+                                        onChange={(e) => setUserId(e.target.value)}
                                         list="users-list"
                                         placeholder="Select or type username..."
                                     />
@@ -203,8 +223,8 @@ export default function ActivityLogs() {
                                     <Label htmlFor="event">Event Type</Label>
                                     <Input
                                         id="event"
-                                        value={form.data.event}
-                                        onChange={(e) => form.setData('event', e.target.value)}
+                                        value={event}
+                                        onChange={(e) => setEvent(e.target.value)}
                                         list="event-list"
                                         placeholder="Select or type event..."
                                     />
@@ -222,8 +242,8 @@ export default function ActivityLogs() {
                                     <Label htmlFor="subject_type">Model Type</Label>
                                     <Input
                                         id="subject_type"
-                                        value={form.data.subject_type}
-                                        onChange={(e) => form.setData('subject_type', e.target.value)}
+                                        value={subjectType}
+                                        onChange={(e) => setSubjectType(e.target.value)}
                                         list="model-list"
                                         placeholder="Select or type model..."
                                     />
@@ -242,8 +262,8 @@ export default function ActivityLogs() {
                                     <Input
                                         id="date_from"
                                         type="date"
-                                        value={form.data.date_from}
-                                        onChange={(e) => form.setData('date_from', e.target.value)}
+                                        value={dateFrom}
+                                        onChange={(e) => setDateFrom(e.target.value)}
                                     />
                                 </div>
 
@@ -252,29 +272,22 @@ export default function ActivityLogs() {
                                     <Input
                                         id="date_to"
                                         type="date"
-                                        value={form.data.date_to}
-                                        onChange={(e) => form.setData('date_to', e.target.value)}
+                                        value={dateTo}
+                                        onChange={(e) => setDateTo(e.target.value)}
                                     />
                                 </div>
 
                                 <div className="flex items-end gap-2 md:col-span-2 lg:col-span-6">
-                                    <Button 
-                                        type="button"
-                                        onClick={() => form.get('/activity-logs', {
-                                            preserveState: true,
-                                            preserveScroll: true,
-                                        })}
-                                        disabled={form.processing}
-                                        className="flex-1 md:flex-none"
-                                    >
-                                        Apply Filters
-                                    </Button>
                                     <Button
                                         type="button"
                                         variant="outline"
                                         onClick={() => {
-                                            form.reset();
-                                            window.location.href = '/activity-logs';
+                                            setSearch('');
+                                            setUserId('');
+                                            setEvent('');
+                                            setSubjectType('');
+                                            setDateFrom('');
+                                            setDateTo('');
                                         }}
                                         className="flex-1 md:flex-none"
                                     >
@@ -294,7 +307,11 @@ export default function ActivityLogs() {
                         </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        {activities.data.length === 0 ? (
+                        {isLoading ? (
+                            <div className="flex items-center justify-center py-8">
+                                <p className="text-sm text-muted-foreground">Loading...</p>
+                            </div>
+                        ) : activities.data.length === 0 ? (
                             <p className="text-sm text-muted-foreground">No activity logs found.</p>
                         ) : (
                             <div className="overflow-x-auto">
@@ -304,7 +321,7 @@ export default function ActivityLogs() {
                                             <th className="pb-2 font-medium">User</th>
                                             <th className="pb-2 font-medium">Event</th>
                                             <th className="pb-2 font-medium">Description</th>
-                                            <th className="pb-2 font-medium">Model</th>
+                                                                <th className="pb-2 font-medium">Type</th>
                                             <th className="pb-2 font-medium">IP Address</th>
                                             <th className="pb-2 font-medium">Date</th>
                                             <th className="pb-2 font-medium">Time</th>
@@ -348,7 +365,7 @@ export default function ActivityLogs() {
                                                     </td>
                                                     <td className="py-3">
                                                         <code className="text-xs bg-muted px-2 py-1 rounded">
-                                                            {activity.subject_type}
+                                                            {activity.subject_type || '—'}
                                                         </code>
                                                     </td>
                                                     <td className="py-3 text-muted-foreground">

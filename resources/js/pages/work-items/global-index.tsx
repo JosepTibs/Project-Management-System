@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Search, ExternalLink, Edit } from 'lucide-react';
+import { Search, ExternalLink, Edit, Trash2 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface Status {
@@ -22,6 +22,7 @@ interface Group {
 interface Member {
     id: number;
     name: string;
+    
 }
 
 interface ProjectRef {
@@ -45,6 +46,7 @@ interface GlobalWorkItemsPageProps extends Record<string, unknown> {
     filters: {
         projects: ProjectRef[];
         statuses: Status[];
+        
     };
 }
 
@@ -64,6 +66,13 @@ function getPriorityVariant(priority: string) {
         default: return 'outline' as const;
     }
 }
+
+function handleDelete(projectId:number, workItemId:number) {
+        if (confirm(`Are you sure you want to delete? This action cannot be undone.`)) {
+            router.delete(`/projects/${projectId}/work-items/${workItemId}`, { preserveScroll: true });
+            
+        }
+    }
 
 export default function GlobalWorkItemsIndex() {
     const { workItems, filters } = usePage<GlobalWorkItemsPageProps>().props;
@@ -171,7 +180,7 @@ export default function GlobalWorkItemsIndex() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {filteredItems.map((item: WorkItemData) => (
+                                        {filteredItems.map((item: WorkItemData,) => (
                                             <TableRow key={item.id}>
                                                 <TableCell className="font-medium max-w-xs truncate hover:underline leading-tight">
                                                     <Link href={`/projects/${item.project?.id}/work-items/${item.id}`}>
@@ -200,24 +209,33 @@ export default function GlobalWorkItemsIndex() {
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground">
                                                    
-                                                    {item.assignee?.name || '—'}
+                                                    <Link href={`/users/${item.assignee?.id}`} className = "text-sm text-muted-foreground hover:text-foreground hover:underline flex items-center gap-1">
+                                                    {item.assignee?.name || '—'} <ExternalLink className="h-3 w-3" /></Link>
                                                     
                                                 </TableCell>
                                                
                                                 <TableCell>
+                                                    
                                                     <div className="flex justify-end gap-2">
                                                         <Link href={`/projects/${item.project?.id}/work-items/${item.id}`}>
                                                             <Button variant="outline" size="sm" title="View">
                                                                 <ExternalLink className="h-4 w-4" />
                                                             </Button>
                                                         </Link>
-                                                    </div>
-                                                    <div className="flex justify-end gap-2">
+                                                 
                                                         <Link href={`/projects/${item.project?.id}/work-items/${item.id}/edit`}>
                                                             <Button variant="outline" size="sm" title="Edit">
                                                                 <Edit className="h-4 w-4" />
                                                             </Button>
                                                         </Link>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="text-red-600 hover:text-red-700"
+                                                            onClick={() => handleDelete(item.project!.id, item.id)}
+                                                            title="Delete">
+                                                                <Trash2 className="h-4 w-4" />
+                                                        </Button>
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -226,11 +244,11 @@ export default function GlobalWorkItemsIndex() {
                                 </Table>
                             </div>
                         ) : (
-                            <p className="py-8 text-center text-sm text-muted-foreground">
+                            <div className="py-8 text-center text-sm text-muted-foreground">
                                 {search || projectFilter || statusFilter || priorityFilter
                                     ? 'No work items match the current filters.'
                                     : 'No work items found.'}
-                            </p>
+                            </div>
                         )}
                     </CardContent>
                 </Card>

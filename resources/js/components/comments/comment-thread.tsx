@@ -2,12 +2,25 @@ import { useState } from 'react';
 import { router, usePage } from '@inertiajs/react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, Edit2, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { MessageSquare, Edit2, Trash2, ChevronDown, ChevronRight, Paperclip } from 'lucide-react';
 import CommentInput from './comment-input';
+import FileAttachmentList from '@/components/attachments/file-attachment-list';
+import FileAttachmentUploader from '@/components/attachments/file-attachment-uploader';
 
 interface UserData {
     id: number;
     name: string;
+}
+
+interface AttachmentData {
+    id: number;
+    original_name: string;
+    size: number;
+    mime_type: string;
+    url: string;
+    download_url: string;
+    uploaded_by: { id: number; name: string } | null;
+    created_at: string | null;
 }
 
 interface ReplyData {
@@ -15,6 +28,7 @@ interface ReplyData {
     content: string;
     created_at: string;
     user: UserData;
+    attachments?: AttachmentData[];
 }
 
 interface CommentData {
@@ -23,6 +37,7 @@ interface CommentData {
     created_at: string;
     user: UserData;
     replies: ReplyData[];
+    attachments?: AttachmentData[];
 }
 
 interface CommentThreadProps {
@@ -33,6 +48,7 @@ interface CommentThreadProps {
 export default function CommentThread({ comment, authUserId }: CommentThreadProps) {
     const [showReplies, setShowReplies] = useState(true);
     const [showReplyInput, setShowReplyInput] = useState(false);
+    const [showUploader, setShowUploader] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [editContent, setEditContent] = useState('');
 
@@ -134,6 +150,31 @@ export default function CommentThread({ comment, authUserId }: CommentThreadProp
                     </div>
                     {renderContent(comment)}
 
+                    {/* Attachments on comment */}
+                    {comment.attachments && comment.attachments.length > 0 && (
+                        <div className="mt-2">
+                            <FileAttachmentList attachments={comment.attachments} authUserId={authUserId} />
+                        </div>
+                    )}
+
+                    {/* Attach files button */}
+                    <div className="mt-2">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 text-xs"
+                            onClick={() => setShowUploader(!showUploader)}
+                        >
+                            <Paperclip className="h-3 w-3 mr-1" />
+                            {showUploader ? 'Hide' : 'Attach files'}
+                        </Button>
+                        {showUploader && (
+                            <div className="mt-2">
+                                <FileAttachmentUploader uploadUrl={`/comments/${comment.id}/attachments`} />
+                            </div>
+                        )}
+                    </div>
+
                     {/* Reply button & toggle */}
                     <div className="flex gap-3 mt-2">
                         <Button
@@ -186,6 +227,13 @@ export default function CommentThread({ comment, authUserId }: CommentThreadProp
                                     {renderActions(reply)}
                                 </div>
                                 {renderContent(reply)}
+
+                                {/* Attachments on reply */}
+                                {reply.attachments && reply.attachments.length > 0 && (
+                                    <div className="mt-2">
+                                        <FileAttachmentList attachments={reply.attachments} authUserId={authUserId} />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     ))}

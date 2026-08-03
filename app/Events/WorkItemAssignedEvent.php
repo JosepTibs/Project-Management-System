@@ -2,13 +2,11 @@
 
 namespace App\Events;
 
-use App\Models\work_item;
 use App\Models\User;
+use App\Models\work_item;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -20,7 +18,15 @@ class WorkItemAssignedEvent
      * Create a new event instance.
      */
     public $workItem;
+
+    /**
+     * The user who was assigned to the work item.
+     */
     public $assignee;
+
+    /**
+     * The name of the user who performed the assignment.
+     */
     public $actorName;
 
     public function __construct(work_item $workItem, User $assignee, string $actorName)

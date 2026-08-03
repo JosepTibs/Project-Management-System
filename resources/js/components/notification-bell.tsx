@@ -64,9 +64,17 @@ export function NotificationBell() {
         }
     }
 
+    function csrfHeader(): Record<string, string> {
+        const token = document.cookie.split('; ').find(row => row.startsWith('XSRF-TOKEN='))?.split('=')[1] || '';
+        return {
+            'X-XSRF-TOKEN': decodeURIComponent(token),
+            'Content-Type': 'application/json',
+        };
+    }
+
     async function markAsRead(id: string) {
         try {
-            await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+            await fetch(`/api/notifications/${id}/read`, { method: 'POST', headers: csrfHeader() });
             setNotifications(prev =>
                 prev.map(n => n.id === id ? { ...n, is_unread: false, read_at: new Date().toISOString() } : n)
             );
@@ -78,7 +86,7 @@ export function NotificationBell() {
 
     async function markAllAsRead() {
         try {
-            await fetch('/api/notifications/mark-all-read', { method: 'POST' });
+            await fetch('/api/notifications/mark-all-read', { method: 'POST', headers: csrfHeader() });
             setNotifications(prev => prev.map(n => ({ ...n, is_unread: false, read_at: new Date().toISOString() })));
             setUnreadCount(0);
         } catch (e) {
@@ -96,10 +104,10 @@ export function NotificationBell() {
 
     function getTypeIcon(type: string) {
         switch (type) {
-            case 'WorkItemAssigned': return '👤';
-            case 'StatusChanged': return '🔄';
+            case 'assigned': return '👤';
+            case 'status_changed': return '🔄';
             case 'DueDateReminder': return '⏰';
-            case 'CommentAdded': return '💬';
+            case 'comment_added': return '💬';
             default: return '🔔';
         }
     }
@@ -154,9 +162,9 @@ export function NotificationBell() {
                                         'flex cursor-pointer items-start gap-3 border-b px-4 py-3 transition-colors hover:bg-neutral-50 dark:hover:bg-neutral-800',
                                         notification.is_unread && 'bg-blue-50 dark:bg-blue-950/30'
                                     )}
-                                    onClick={() => {
+                                    onClick={async() => {
                                         if (notification.is_unread) {
-                                            markAsRead(notification.id);
+                                            await markAsRead(notification.id);
                                         }
                                         if (notification.data.url) {
                                             window.location.href = notification.data.url;

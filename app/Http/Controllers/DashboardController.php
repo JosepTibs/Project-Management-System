@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\projects;
+use App\Models\activity_logs;
+use App\Models\LoginActivity;
 use App\Models\project_members;
+use App\Models\projects;
 use App\Models\User;
 use App\Models\work_item;
 use App\Models\work_item_statuses;
-use App\Models\work_item_groups;
-use App\Models\LoginActivity;
-use App\Models\activity_logs;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
@@ -94,7 +93,7 @@ class DashboardController extends Controller
                 $userName = $nameParts ? implode(' ', $nameParts) : ($user?->username ?? 'Unknown');
 
                 return [
-                    'id' => 'login-' . $activity->id,
+                    'id' => 'login-'.$activity->id,
                     'type' => 'login',
                     'event' => $activity->event,
                     'user_name' => $userName,
@@ -103,7 +102,9 @@ class DashboardController extends Controller
                     'user_agent' => $activity->user_agent,
                     'created_at' => $activity->created_at,
                 ];
-            });
+            })
+            ->values()
+            ->toBase();
 
         // Recent general activity logs (user creation, updates, etc.)
         $generalActivities = activity_logs::with('user:id,username,fname,mname,lname,sname')
@@ -114,7 +115,7 @@ class DashboardController extends Controller
                 $userName = $nameParts ? implode(' ', $nameParts) : ($user?->username ?? 'Unknown');
 
                 return [
-                    'id' =>'general-' . $log->id,
+                    'id' => 'general-'.$log->id,
                     'type' => 'general',
                     'event' => $log->event,
                     'user_name' => $userName,
@@ -124,7 +125,9 @@ class DashboardController extends Controller
                     'description' => $log->description,
                     'created_at' => $log->created_at,
                 ];
-            });
+            })
+            ->values()
+            ->toBase();
 
         // Merge and sort activities by date
         $recentActivities = $loginActivities
@@ -134,13 +137,13 @@ class DashboardController extends Controller
             ->values()
             ->map(function ($activity) {
                 return [
-                    'id' => $activity['id'],
-                    'type' => $activity['type'],
-                    'event' => $activity['event'],
-                    'user_name' => $activity['user_name'],
-                    'username' => $activity['username'],
-                    'ip_address' => $activity['ip_address'],
-                    'user_agent' => $activity['user_agent'],
+                    'id' => $activity['id'] ?? null,
+                    'type' => $activity['type'] ?? null,
+                    'event' => $activity['event'] ?? null,
+                    'user_name' => $activity['user_name'] ?? null,
+                    'username' => $activity['username'] ?? null,
+                    'ip_address' => $activity['ip_address'] ?? null,
+                    'user_agent' => $activity['user_agent'] ?? null,
                     'description' => $activity['description'] ?? null,
                     'properties' => $activity['properties'] ?? null,
                     'date' => $activity['created_at']?->format('M d, Y'),

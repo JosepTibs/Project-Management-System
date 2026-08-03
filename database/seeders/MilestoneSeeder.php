@@ -11,52 +11,48 @@ class MilestoneSeeder extends Seeder
     public function run(): void
     {
         $projects = projects::all();
+        $today = now()->startOfDay();
+        $threeMonths = now()->addMonths(3);
 
-        $milestoneData = [
+        $milestoneTemplates = [
             [
                 'name' => 'Planning Phase',
                 'description' => 'Complete project planning, requirements gathering, and initial design.',
-                'start_date' => '2026-01-01',
-                'target_date' => '2026-01-15',
-                'completed_at' => null,
                 'order' => 1,
             ],
             [
                 'name' => 'Development Phase',
                 'description' => 'Core development and implementation of main features.',
-                'start_date' => '2026-01-16',
-                'target_date' => '2026-02-28',
-                'completed_at' => null,
                 'order' => 2,
             ],
             [
                 'name' => 'Testing Phase',
                 'description' => 'Quality assurance, bug fixes, and user acceptance testing.',
-                'start_date' => '2026-03-01',
-                'target_date' => '2026-03-15',
-                'completed_at' => null,
                 'order' => 3,
             ],
             [
                 'name' => 'Launch',
                 'description' => 'Production deployment and launch preparation.',
-                'start_date' => '2026-03-16',
-                'target_date' => '2026-03-31',
-                'completed_at' => null,
                 'order' => 4,
             ],
         ];
 
         foreach ($projects as $project) {
-            foreach ($milestoneData as $milestone) {
+            $projectDuration = $today->diffInDays($threeMonths);
+            $milestoneDuration = (int) ceil($projectDuration / 4);
+
+            foreach ($milestoneTemplates as $index => $template) {
+                $startDate = $today->copy()->addDays($index * $milestoneDuration);
+                $targetDate = $startDate->copy()->addDays($milestoneDuration - 1);
+
                 milestones::create([
                     'project_id' => $project->id,
-                    'name' => $milestone['name'],
-                    'description' => $milestone['description'],
-                    'start_date' => $milestone['start_date'],
-                    'target_date' => $milestone['target_date'],
-                    'completed_at' => $milestone['completed_at'],
-                    'order' => $milestone['order'],
+                    'name' => $template['name'],
+                    'description' => $template['description'],
+                    'start_date' => $startDate->format('Y-m-d'),
+                    'target_date' => $targetDate->format('Y-m-d'),
+                    'completed_at' => null,
+                    'order' => $template['order'],
                 ]);
             }
         }

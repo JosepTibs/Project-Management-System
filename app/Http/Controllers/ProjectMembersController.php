@@ -5,6 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\project_members;
 use Illuminate\Http\Request;
 
+/**
+ * Manages project membership and team collaboration.
+ * Handles adding, removing, and updating project members.
+ */
 class ProjectMembersController extends Controller
 {
     /**

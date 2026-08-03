@@ -2,25 +2,30 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 use App\Models\work_item;
+use Illuminate\Bus\Queueable;
+use Illuminate\Notifications\Notification;
 
 class WorkItemAssigned extends Notification
 {
     use Queueable;
 
     /**
-     * Create a new notification instance.
+     * The work item that was assigned.
      */
     protected $workItem;
+
+    /**
+     * The name of the user who performed the assignment.
+     */
     protected $actorName;
 
+    /**
+     * Create a new notification instance.
+     */
     public function __construct(work_item $workItem, string $actorName)
     {
-        // 
+        //
         $this->workItem = $workItem;
         $this->actorName = $actorName;
     }
@@ -35,7 +40,9 @@ class WorkItemAssigned extends Notification
         return ['database'];
     }
 
- 
+    /**
+     * Get the database representation of the notification.
+     */
     public function toDatabase($notifiable): array
     {
         return [

@@ -5,6 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
 
+/**
+ * Manages work item statuses within projects.
+ * Statuses define the workflow stages (e.g., To Do, In Progress, Done).
+ */
 class WorkItemStatusesController extends Controller
 {
     /**

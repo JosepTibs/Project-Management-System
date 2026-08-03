@@ -3,19 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Models\projects;
+use App\Models\work_item;
 use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
+/**
+ * Handles project CRUD operations and displays project dashboards.
+ */
 class ProjectsController extends Controller
 {
     /**
      * Display a listing of the resource.
+     *
+     * Returns all projects with creator, member count, work item count,
+     * and average completion percentage.
      */
     public function index()
     {
         $projects = projects::with('creator')
             ->withCount('members', 'workItems')
+            // Calculate average completion percentage from work items
             ->selectSub(function ($query) {
                 $query->selectRaw('ROUND(AVG(progress), 2)')
                     ->from('work_items')
@@ -58,14 +66,14 @@ class ProjectsController extends Controller
     {
         //
         $validated = $request->validate([
-            'name'=> 'required|string|max:255',
-            'description'=> 'nullable|string',
-            'item_prefix'=> 'required|string|max:255',
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'item_prefix' => 'required|string|max:255',
         ]);
-            $validated['created_by'] = auth()->id();
-            $project = projects::create($validated);
+        $validated['created_by'] = auth()->id();
+        $project = projects::create($validated);
 
-            return redirect()->route('projects.setup.show', $project->id)->with('success', 'Project created. Now set it up.');
+        return redirect()->route('projects.setup.show', $project->id)->with('success', 'Project created. Now set it up.');
     }
 
     /**
@@ -73,7 +81,12 @@ class ProjectsController extends Controller
      */
     public function show(projects $project)
     {
+        $project->loadMissing('members');
+        $this->authorize('view', $project);
+
         $project->load(['creator', 'members.user', 'workItems', 'milestones', 'workItemGroups.workItems']);
+
+        $user = auth()->user();
 
         return Inertia::render('projects/show', [
             'project' => [
@@ -114,6 +127,9 @@ class ProjectsController extends Controller
                     ];
                 }),
                 'work_item_groups' => $project->workItemGroups->map(function ($group) {
+                    $items = $group->workItems;
+                    $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : 0;
+
                     return [
                         'id' => $group->id,
                         'name' => $group->name,
@@ -121,16 +137,23 @@ class ProjectsController extends Controller
                         'start_date' => $group->start_date?->format('Y-m-d'),
                         'end_date' => $group->end_date?->format('Y-m-d'),
                         'milestone_id' => $group->milestone_id,
+                        'completion_percentage' => $avgProgress,
                         'work_items' => $group->workItems->map(function ($item) {
                             return [
                                 'id' => $item->id,
                                 'title' => $item->title,
                                 'priority' => $item->priority,
                                 'due_date' => $item->due_date?->format('Y-m-d'),
+                                'progress' => $item->progress ?? 0,
                             ];
                         }),
                     ];
                 }),
+            ],
+            'can' => [
+                'view' => $user->can('view', $project),
+                'update' => $user->can('update', $project),
+                'delete' => $user->can('delete', $project),
             ],
         ]);
     }
@@ -142,11 +165,11 @@ class ProjectsController extends Controller
     {
         //
         return Inertia::render('projects/edit', [
-            'project' =>[
-                'id'=> $project->id,
-                'name'=> $project->name,
-                'description'=> $project->description,
-                'item_prefix'=> $project->item_prefix,
+            'project' => [
+                'id' => $project->id,
+                'name' => $project->name,
+                'description' => $project->description,
+                'item_prefix' => $project->item_prefix,
             ],
         ]);
     }
@@ -156,6 +179,8 @@ class ProjectsController extends Controller
      */
     public function update(Request $request, projects $project)
     {
+        $this->authorize('update', $project);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -167,9 +192,16 @@ class ProjectsController extends Controller
         return redirect()->route('projects.index')->with('success', 'Project Updated Successfully');
     }
 
+    /**
+     * Display the kanban board for a project.
+     *
+     * Groups work items by their status to create kanban columns.
+     * Ensures all defined statuses appear even if they have no work items.
+     */
     public function kanban(projects $project)
     {
-        $workItems = \App\Models\work_item::where('project_id', $project->id)
+        // Fetch and group work items by status name
+        $workItems = work_item::where('project_id', $project->id)
             ->with(['status', 'assignee', 'group'])
             ->get()
             ->groupBy('status.name')
@@ -189,6 +221,7 @@ class ProjectsController extends Controller
                 ];
             })->values()->toArray();
 
+        // Fetch all statuses for this project
         $statuses = work_item_statuses::where('project_id', $project->id)
             ->orderBy('order')
             ->get(['id', 'name', 'color']);
@@ -196,6 +229,7 @@ class ProjectsController extends Controller
         // Ensure all statuses appear as columns even if empty
         $columns = collect($statuses)->map(function ($status) use ($workItems) {
             $existing = collect($workItems)->firstWhere('status', $status->name);
+
             return $existing ?: [
                 'status' => $status->name,
                 'items' => [],
@@ -217,9 +251,10 @@ class ProjectsController extends Controller
      */
     public function destroy(projects $project)
     {
-        //
+        $this->authorize('delete', $project);
+
         $project->delete();
 
-        return redirect()->route('projects.index')->with('success','Project Deleted Successfully');
+        return redirect()->route('projects.index')->with('success', 'Project Deleted Successfully');
     }
 }

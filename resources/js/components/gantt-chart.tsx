@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Milestone {
     id: number;
@@ -18,6 +19,7 @@ interface WorkItemGroup {
     start_date: string;
     end_date: string;
     milestone_id: number | null;
+    completion_percentage: number;
 }
 
 interface GanttChartProps {
@@ -125,29 +127,43 @@ export function GanttChart({
     workItemGroups,
 }: GanttChartProps) {
     const items = useMemo<TimelineItem[]>(() => {
-        return [
-            ...workItemGroups.map((group) => ({
+        const result: TimelineItem[] = [];
+
+        for (const group of workItemGroups) {
+            if (!group.start_date || !group.end_date) continue;
+            const start = new Date(group.start_date);
+            const end = new Date(group.end_date);
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) continue;
+            result.push({
                 id: `group-${group.id}`,
                 name: group.name,
-                start: new Date(group.start_date),
-                end: new Date(group.end_date),
+                start,
+                end,
                 type: "task" as const,
-                progress: 0,
+                progress: group.completion_percentage ?? 0,
                 description: group.description,
-            })),
-            ...milestones.map((milestone) => ({
+            });
+        }
+
+        for (const milestone of milestones) {
+            if (!milestone.target_date) continue;
+            const target = new Date(milestone.target_date);
+            if (isNaN(target.getTime())) continue;
+            result.push({
                 id: `milestone-${milestone.id}`,
                 name: milestone.name,
-                start: new Date(milestone.target_date),
-                end: new Date(milestone.target_date),
+                start: target,
+                end: target,
                 type: "milestone" as const,
                 progress: milestone.completed_at ? 100 : 0,
                 description: milestone.description,
-            })),
-        ];
+            });
+        }
+
+        return result;
     }, [milestones, workItemGroups]);
 
-    const { earliest, latest, totalDays, days, monthGroups, todayOffset } =
+    const { earliest, totalDays, days, monthGroups, todayOffset } =
         useMemo(() => {
             if (!items.length) {
                 return {
@@ -197,7 +213,8 @@ export function GanttChart({
     }
 
     return (
-        <div className="rounded-lg border bg-background overflow-auto">
+        <div className="w-full max-h-[500px] rounded-lg border bg-background overflow-x-auto overflow-y-auto">
+            <TooltipProvider delayDuration={300}>
             <div
                 className="grid"
                 style={{
@@ -211,9 +228,9 @@ export function GanttChart({
                 </div>
 
                 {/* ── Header: Month groups + day numbers ── */}
-                <div className="border-b bg-muted/40">
+                <div className="border-b bg-muted/40 min-w-0">
                     {/* Month labels row */}
-                    <div className="flex">
+                    <div className="flex min-w-0">
                         {monthGroups.map((group) => (
                             <div
                                 key={group.label}
@@ -227,7 +244,7 @@ export function GanttChart({
                         ))}
                     </div>
                     {/* Day numbers row */}
-                    <div className="flex">
+                    <div className="flex min-w-0">
                         {days.map((day) => (
                             <div
                                 key={day.toISOString()}
@@ -247,9 +264,11 @@ export function GanttChart({
                 {/* ── Rows ── */}
                 {items.map((item, index) => {
                     const startOffset = differenceInDays(item.start, earliest);
-                    const duration =
-                        differenceInDays(item.end, item.start) + 1;
-                    const barWidth = duration * DAY_WIDTH - 4;
+                    const duration = Math.max(
+                        differenceInDays(item.end, item.start) + 1,
+                        1
+                    );
+                    const barWidth = Math.max(duration * DAY_WIDTH - 4, DAY_WIDTH - 4);
                     const barLeft = startOffset * DAY_WIDTH + 2;
                     const isEvenRow = index % 2 === 0;
 
@@ -264,7 +283,7 @@ export function GanttChart({
                             >
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium truncate">
+                                        <span className="min-w-0 flex-1 text-sm font-medium truncate">
                                             {item.name}
                                         </span>
                                         <span
@@ -279,7 +298,7 @@ export function GanttChart({
                                                 : "Work Item"}
                                         </span>
                                     </div>
-                                    <div className="text-xs text-muted-foreground mt-0.5">
+                                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
                                         {item.type === "milestone"
                                             ? `Due: ${formatDateShort(item.end)}`
                                             : formatDateRange(
@@ -314,82 +333,97 @@ export function GanttChart({
 
                                 {/* Today indicator (only on first row) */}
                                 {index === 0 && todayOffset >= 0 && (
-                                    <div
-                                        className="absolute top-0 bottom-0 z-10 pointer-events-none"
-                                        style={{
-                                            left: todayOffset * DAY_WIDTH,
-                                        }}
-                                    >
-                                        <div className="w-px h-full bg-blue-500/60" />
-                                        <div className="absolute -top-0.5 left-1/2 -translate-x-1/2 rounded bg-blue-500 px-1 py-[1px] text-[9px] font-bold text-white whitespace-nowrap">
+                                    <>
+                                        <div
+                                            className="absolute top-0 bottom-0 z-10 pointer-events-none"
+                                            style={{
+                                                left: todayOffset * DAY_WIDTH,
+                                            }}
+                                        >
+                                            <div className="w-px h-full bg-blue-500/60" />
+                                        </div>
+                                        <div
+                                            className="absolute -top-0.5 z-10 rounded bg-blue-500 px-1 py-[1px] text-[9px] font-bold text-white whitespace-nowrap pointer-events-none"
+                                            style={{
+                                                left: Math.max(
+                                                    20,
+                                                    Math.min(
+                                                        todayOffset * DAY_WIDTH,
+                                                        totalDays * DAY_WIDTH - 20
+                                                    )
+                                                ),
+                                                transform: "translateX(-50%)",
+                                            }}
+                                        >
                                             Today
                                         </div>
-                                    </div>
+                                    </>
                                 )}
 
                                 {/* Task bar */}
                                 {item.type === "task" ? (
-                                    <div className="group relative h-full">
-                                        <div
-                                            className="absolute top-1/2 h-7 -translate-y-1/2 rounded-md overflow-hidden cursor-pointer
-                                                        bg-gradient-to-r from-indigo-500 to-indigo-400
-                                                        shadow-sm hover:shadow-md
-                                                        hover:from-indigo-600 hover:to-indigo-500
-                                                        transition-all duration-150"
-                                            style={{
-                                                left: barLeft,
-                                                width: barWidth,
-                                            }}
-                                        >
-                                            {/* Progress fill */}
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
                                             <div
-                                                className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-600/50 to-indigo-500/30 transition-all duration-500"
+                                                className="group absolute top-1/2 -translate-y-1/2 cursor-pointer"
                                                 style={{
-                                                    width: `${item.progress}%`,
+                                                    left: barLeft,
+                                                    width: barWidth,
                                                 }}
-                                            />
-                                            {/* Label */}
-                                            {barWidth > 50 && (
-                                                <span className="relative z-10 flex items-center h-full px-2 text-[11px] font-semibold text-white truncate">
-                                                    {item.progress > 0
-                                                        ? `${item.progress}%`
-                                                        : ""}
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {/* Tooltip */}
-                                        <div
-                                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
-                                                        hidden group-hover:block
-                                                        rounded-lg border bg-popover px-3 py-2 text-xs shadow-md
-                                                        min-w-[200px] pointer-events-none"
-                                        >
-                                            <p className="font-medium text-popover-foreground">
-                                                {item.name}
-                                            </p>
-                                            {item.description && (
-                                                <p className="text-muted-foreground mt-0.5 line-clamp-2">
-                                                    {item.description}
-                                                </p>
-                                            )}
-                                            <div className="mt-1.5 flex items-center gap-2 text-muted-foreground">
-                                                <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
-                                                <span>
-                                                    {formatDateRange(
-                                                        item.start,
-                                                        item.end
+                                            >
+                                                <div
+                                                    className="relative h-7 rounded-md overflow-hidden cursor-pointer
+                                                                bg-gradient-to-r from-indigo-600 to-indigo-500
+                                                                shadow-md hover:shadow-lg
+                                                                hover:from-indigo-700 hover:to-indigo-600
+                                                                transition-all duration-150"
+                                                >
+                                                    {/* Progress fill */}
+                                                    <div
+                                                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-800/40 to-indigo-700/20 transition-all duration-500"
+                                                        style={{
+                                                            width: `${item.progress}%`,
+                                                        }}
+                                                    />
+                                                    {/* Label */}
+                                                    {barWidth > 50 && (
+                                                        <span className="relative z-10 flex items-center h-full px-2 text-[11px] font-semibold text-white truncate">
+                                                            {item.progress > 0
+                                                                ? `${item.progress}%`
+                                                                : ""}
+                                                        </span>
                                                     )}
-                                                </span>
+                                                </div>
                                             </div>
-                                            <p className="text-muted-foreground">
-                                                Progress: {item.progress}%
-                                            </p>
-                                        </div>
-                                    </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top" align="center" className="z-50 max-w-[200px]">
+                                            <div className="space-y-1">
+                                                <p className="font-medium text-popover-foreground">
+                                                    {item.name}
+                                                </p>
+                                                {item.description && (
+                                                    <p className="text-muted-foreground line-clamp-2">
+                                                        {item.description}
+                                                    </p>
+                                                )}
+                                                <div className="flex items-center gap-2 text-muted-foreground">
+                                                    <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
+                                                    <span>
+                                                        {formatDateRange(
+                                                            item.start,
+                                                            item.end
+                                                        )}
+                                                    </span>
+                                                </div>
+                                                <p className="text-muted-foreground">
+                                                    Progress: {item.progress}%
+                                                </p>
+                                            </div>
+                                        </TooltipContent>
+                                    </Tooltip>
                                 ) : (
                                     /* Milestone diamond */
-                                    <div className="group relative h-full">
+                                    <div className="relative h-full">
                                         {/* Vertical stem line */}
                                         <div
                                             className="absolute top-0 bottom-0 w-px bg-amber-300/40"
@@ -399,58 +433,63 @@ export function GanttChart({
                                                     DAY_WIDTH / 2,
                                             }}
                                         />
-                                        {/* Diamond */}
-                                        <div
-                                            className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rotate-45
-                                                        border-2 shadow-sm transition-all duration-150
-                                                        ${
-                                                            item.progress === 100
-                                                                ? "bg-amber-400 border-amber-500 shadow-amber-300/50"
-                                                                : "bg-amber-300 border-amber-400 shadow-amber-200/30"
-                                                        }`}
-                                            style={{
-                                                left:
-                                                    startOffset * DAY_WIDTH +
-                                                    DAY_WIDTH / 2 -
-                                                    8,
-                                            }}
-                                        >
-                                            {/* Inner dot for completed */}
-                                            {item.progress === 100 && (
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <div className="h-1.5 w-1.5 rotate-45 bg-amber-700" />
+                                        {/* Diamond + tooltip anchored to the diamond */}
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <div
+                                                    className="absolute top-0 bottom-0 cursor-pointer"
+                                                    style={{
+                                                        left:
+                                                            startOffset * DAY_WIDTH +
+                                                            DAY_WIDTH / 2 -
+                                                            8,
+                                                        width: 16,
+                                                    }}
+                                                >
+                                                    {/* Diamond */}
+                                                    <div
+                                                        className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rotate-45
+                                                                    border-2 shadow-sm transition-all duration-150
+                                                                    ${
+                                                                        item.progress === 100
+                                                                            ? "bg-amber-400 border-amber-500 shadow-amber-300/50"
+                                                                            : "bg-amber-300 border-amber-400 shadow-amber-200/30"
+                                                                    }`}
+                                                    >
+                                                        {/* Inner dot for completed */}
+                                                        {item.progress === 100 && (
+                                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                                <div className="h-1.5 w-1.5 rotate-45 bg-amber-700" />
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            )}
-                                        </div>
-
-                                        {/* Tooltip */}
-                                        <div
-                                            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50
-                                                        hidden group-hover:block
-                                                        rounded-lg border bg-popover px-3 py-2 text-xs shadow-md
-                                                        min-w-[200px] pointer-events-none"
-                                        >
-                                            <p className="font-medium text-popover-foreground">
-                                                {item.name}
-                                            </p>
-                                            {item.description && (
-                                                <p className="text-muted-foreground mt-0.5 line-clamp-2">
-                                                    {item.description}
-                                                </p>
-                                            )}
-                                            <div className="mt-1.5 flex items-center gap-2 text-muted-foreground">
-                                                <span className="inline-block h-2 w-2 rotate-45 bg-amber-500" />
-                                                <span>
-                                                    Due:{" "}
-                                                    {formatDateShort(item.end)}
-                                                </span>
-                                            </div>
-                                            {item.progress === 100 && (
-                                                <p className="text-emerald-600 font-medium">
-                                                    ✓ Completed
-                                                </p>
-                                            )}
-                                        </div>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="top" align="center" className="z-50 max-w-[200px]">
+                                                <div className="space-y-1">
+                                                    <p className="font-medium text-popover-foreground">
+                                                        {item.name}
+                                                    </p>
+                                                    {item.description && (
+                                                        <p className="text-muted-foreground line-clamp-2">
+                                                            {item.description}
+                                                        </p>
+                                                    )}
+                                                    <div className="flex items-center gap-2 text-muted-foreground">
+                                                        <span className="inline-block h-2 w-2 rotate-45 bg-amber-500" />
+                                                        <span>
+                                                            Due:{" "}
+                                                            {formatDateShort(item.end)}
+                                                        </span>
+                                                    </div>
+                                                    {item.progress === 100 && (
+                                                        <p className="text-emerald-600 font-medium">
+                                                            ✓ Completed
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </TooltipContent>
+                                        </Tooltip>
                                     </div>
                                 )}
                             </div>
@@ -458,6 +497,7 @@ export function GanttChart({
                     );
                 })}
             </div>
+            </TooltipProvider>
         </div>
     );
 }

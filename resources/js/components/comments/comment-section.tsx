@@ -9,11 +9,23 @@ interface UserData {
     name: string;
 }
 
+interface AttachmentData {
+    id: number;
+    original_name: string;
+    size: number;
+    mime_type: string;
+    url: string;
+    download_url: string;
+    uploaded_by: { id: number; name: string } | null;
+    created_at: string | null;
+}
+
 interface ReplyData {
     id: number;
     content: string;
     created_at: string;
     user: UserData;
+    attachments?: AttachmentData[];
 }
 
 interface CommentData {
@@ -22,6 +34,7 @@ interface CommentData {
     created_at: string;
     user: UserData;
     replies: ReplyData[];
+    attachments?: AttachmentData[];
 }
 
 interface CommentSectionProps {

@@ -5,9 +5,7 @@ namespace App\Events;
 use App\Models\work_item;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -18,9 +16,24 @@ class WorkItemStatusChangedEvent
     /**
      * Create a new event instance.
      */
+    /**
+     * The work item whose status changed.
+     */
     public $workItem;
+
+    /**
+     * The previous status name.
+     */
     public $oldStatus;
+
+    /**
+     * The new status name.
+     */
     public $newStatus;
+
+    /**
+     * The name of the user who changed the status.
+     */
     public $actorName;
 
     public function __construct(work_item $workItem, string $oldStatus, string $newStatus, string $actorName)

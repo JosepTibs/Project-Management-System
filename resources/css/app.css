@@ -267,3 +267,13 @@ input[type="date"]::-moz-calendar-picker-indicator {
     background-color: hsl(0, 0%, 3.9%) !important;
     color: hsl(0, 0%, 98%) !important;
 }
+
+/* Native select option dark mode fix */
+.dark select option {
+    background-color: hsl(0, 0%, 14.9%) !important;
+    color: hsl(0, 0%, 98%) !important;
+}
+
+.dark select option:checked {
+    background-color: hsl(0, 0%, 20%) !important;
+}

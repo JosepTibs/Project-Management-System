@@ -32,6 +32,48 @@ class ProjectSeeder extends Seeder
                 'item_prefix' => 'IT',
                 'created_by' => $admin?->id ?? 1,
             ],
+            [
+                'name' => 'E-Commerce Platform',
+                'description' => 'Build a scalable e-commerce platform with payment integration and inventory management.',
+                'item_prefix' => 'EC',
+                'created_by' => $admin?->id ?? 1,
+            ],
+            [
+                'name' => 'Customer Portal',
+                'description' => 'Self-service customer portal for account management and support tickets.',
+                'item_prefix' => 'CP',
+                'created_by' => $admin?->id ?? 1,
+            ],
+            [
+                'name' => 'Data Analytics Dashboard',
+                'description' => 'Business intelligence dashboard with real-time analytics and reporting features.',
+                'item_prefix' => 'DA',
+                'created_by' => $admin?->id ?? 1,
+            ],
+            [
+                'name' => 'API Gateway',
+                'description' => 'Centralized API gateway for microservices architecture with rate limiting and monitoring.',
+                'item_prefix' => 'AG',
+                'created_by' => $admin?->id ?? 1,
+            ],
+            [
+                'name' => 'DevOps Pipeline',
+                'description' => 'CI/CD pipeline automation for deployments, testing, and infrastructure as code.',
+                'item_prefix' => 'DP',
+                'created_by' => $admin?->id ?? 1,
+            ],
+            [
+                'name' => 'Security Enhancement',
+                'description' => 'Implement security improvements including 2FA, encryption, and audit logging.',
+                'item_prefix' => 'SE',
+                'created_by' => $admin?->id ?? 1,
+            ],
+            [
+                'name' => 'Legacy System Migration',
+                'description' => 'Migrate legacy systems to modern cloud-based infrastructure.',
+                'item_prefix' => 'LM',
+                'created_by' => $admin?->id ?? 1,
+            ],
         ];
 
         foreach ($projects as $project) {

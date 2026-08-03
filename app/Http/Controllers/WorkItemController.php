@@ -2,24 +2,43 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\WorkItemAssignedEvent;
+use App\Events\WorkItemStatusChangedEvent;
+use App\Models\project_members;
 use App\Models\projects;
 use App\Models\User;
 use App\Models\work_item;
 use App\Models\work_item_groups;
 use App\Models\work_item_statuses;
-use App\Models\project_members;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
+/**
+ * Handles work item CRUD operations, progress updates, and status changes
+ * within the project management system.
+ */
 class WorkItemController extends Controller
 {
+    /**
+     * Display the specified work item with its details and comments.
+     */
     public function show(projects $project, work_item $workItem)
     {
-        $workItem->load(['status', 'group', 'assignee', 'project']);
+        // Remember where the user came from for the Back button
+        // Guard: don't overwrite if coming from the edit page (after update redirect)
+        $previousUrl = url()->previous();
+        if (! str_contains($previousUrl, '/edit')) {
+            session(['work_item_back_to' => $previousUrl]);
+        }
 
+        // Load related status, group, assignee, project, and attachments data
+        $workItem->load(['status', 'group', 'assignee', 'project', 'attachments.uploader']);
+
+        // Fetch and transform comments for display (note: similar logic to CommentsController for future refactoring)
         $comments = $workItem->comments()
             ->whereNull('parent_id')
-            ->with(['user', 'replies.user'])
+            ->with(['user', 'replies.user', 'replies.attachments.uploader', 'attachments.uploader'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($comment) {
@@ -31,6 +50,16 @@ class WorkItemController extends Controller
                         'id' => $comment->user->id,
                         'name' => $comment->user->name,
                     ],
+                    'attachments' => $comment->attachments->map(fn ($attachment) => [
+                        'id' => $attachment->id,
+                        'original_name' => $attachment->original_name,
+                        'size' => $attachment->size,
+                        'mime_type' => $attachment->mime_type,
+                        'url' => Storage::disk('public')->url($attachment->path),
+                        'download_url' => route('attachments.download', $attachment),
+                        'uploaded_by' => $attachment->uploader ? ['id' => $attachment->uploader->id, 'name' => $attachment->uploader->name] : null,
+                        'created_at' => $attachment->created_at?->diffForHumans(),
+                    ]),
                     'replies' => $comment->replies->map(function ($reply) {
                         return [
                             'id' => $reply->id,
@@ -40,12 +69,34 @@ class WorkItemController extends Controller
                                 'id' => $reply->user->id,
                                 'name' => $reply->user->name,
                             ],
+                            'attachments' => $reply->attachments->map(fn ($attachment) => [
+                                'id' => $attachment->id,
+                                'original_name' => $attachment->original_name,
+                                'size' => $attachment->size,
+                                'mime_type' => $attachment->mime_type,
+                                'url' => Storage::disk('public')->url($attachment->path),
+                                'download_url' => route('attachments.download', $attachment),
+                                'uploaded_by' => $attachment->uploader ? ['id' => $attachment->uploader->id, 'name' => $attachment->uploader->name] : null,
+                                'created_at' => $attachment->created_at?->diffForHumans(),
+                            ]),
                         ];
                     }),
                 ];
             });
 
+        $attachments = $workItem->attachments->map(fn ($attachment) => [
+            'id' => $attachment->id,
+            'original_name' => $attachment->original_name,
+            'size' => $attachment->size,
+            'mime_type' => $attachment->mime_type,
+            'url' => Storage::disk('public')->url($attachment->path),
+            'download_url' => route('attachments.download', $attachment),
+            'uploaded_by' => $attachment->uploader ? ['id' => $attachment->uploader->id, 'name' => $attachment->uploader->name] : null,
+            'created_at' => $attachment->created_at?->diffForHumans(),
+        ]);
+
         return Inertia::render('work-items/show', [
+            'backUrl' => session('work_item_back_to', route('projects.work-items.index', $project->id)),
             'workItems' => [
                 'id' => $workItem->id,
                 'title' => $workItem->title,
@@ -58,23 +109,27 @@ class WorkItemController extends Controller
                 'assignee' => $workItem->assignee ? ['id' => $workItem->assignee->id, 'name' => $workItem->assignee->name] : null,
                 'project' => $workItem->project ? ['id' => $workItem->project->id, 'name' => $workItem->project->name] : null,
             ],
+            'attachments' => $attachments,
             'comments' => $comments,
         ]);
     }
 
+    /**
+     * Display a global work items list (across all projects).
+     */
     public function globalIndex(Request $request)
     {
         $query = work_item::with(['status', 'group', 'assignee', 'project']);
 
-        // Search
+        // Search by title or description
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
-        // Filters
+        // Apply filters
         if ($projectId = $request->input('project_id')) {
             $query->where('project_id', $projectId);
         }
@@ -100,7 +155,7 @@ class WorkItemController extends Controller
             ];
         });
 
-        $projects = \App\Models\projects::select('id', 'name')->orderBy('name')->get();
+        $projects = projects::select('id', 'name')->orderBy('name')->get();
         $statuses = work_item_statuses::select('name')->distinct()->orderBy('name')->get();
 
         return Inertia::render('work-items/global-index', [
@@ -112,10 +167,15 @@ class WorkItemController extends Controller
         ]);
     }
 
+    /**
+     * Display a listing of work items for a specific project.
+     */
     public function index(projects $project)
     {
+        // Load project members and their associated users
         $project->load('members.user');
 
+        // Fetch project work items ordered by newest first
         $workItems = work_item::where('project_id', $project->id)
             ->with(['status', 'group', 'assignee'])
             ->orderBy('created_at', 'desc')
@@ -134,6 +194,7 @@ class WorkItemController extends Controller
                 ];
             });
 
+        // Fetch filter options for the project
         $statuses = work_item_statuses::where('project_id', $project->id)
             ->orderBy('order')
             ->get(['id', 'name']);
@@ -159,8 +220,12 @@ class WorkItemController extends Controller
         ]);
     }
 
+    /**
+     * Show the form for creating a new work item.
+     */
     public function create(projects $project)
     {
+        // Fetch filter options for the create form
         $statuses = work_item_statuses::where('project_id', $project->id)
             ->orderBy('order')
             ->get(['id', 'name']);
@@ -183,8 +248,14 @@ class WorkItemController extends Controller
         ]);
     }
 
+    /**
+     * Store a newly created work item in storage.
+     */
     public function store(Request $request, projects $project)
     {
+        $project->loadMissing('members');
+        $this->authorize('work-item.create', $project);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -198,15 +269,27 @@ class WorkItemController extends Controller
 
         $validated['project_id'] = $project->id;
 
-        work_item::create($validated);
+        $workItem = work_item::create($validated);
+
+        // Dispatch assignment event if the work item has an assignee
+        if ($workItem->assignee) {
+            WorkItemAssignedEvent::dispatch($workItem, $workItem->assignee, auth()->user()->name);
+        }
 
         return redirect()
             ->route('projects.work-items.index', $project->id)
             ->with('success', 'Work item created successfully.');
     }
 
+    /**
+     * Show the form for editing the specified work item.
+     */
     public function edit(projects $project, work_item $workItem)
     {
+        // Remember the page the user came from so we can redirect back after update
+        session(['work_item_return_to' => url()->previous()]);
+
+        // Fetch filter options for the edit form
         $statuses = work_item_statuses::where('project_id', $project->id)
             ->orderBy('order')
             ->get(['id', 'name']);
@@ -240,8 +323,16 @@ class WorkItemController extends Controller
         ]);
     }
 
+    /**
+     * Update the specified work item in storage.
+     *
+     * Dispatches assignment and status change events when applicable.
+     */
     public function update(Request $request, projects $project, work_item $workItem)
     {
+        $workItem->loadMissing('project.members');
+        $this->authorize('work-item.update', $workItem);
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -252,23 +343,58 @@ class WorkItemController extends Controller
             'progress' => 'nullable|integer|min:0|max:100',
             'due_date' => 'required|date',
         ]);
+        // Store old values to detect changes for event dispatching
+        $oldAssigneeId = $workItem->assignee_id;
+        $oldStatusName = $workItem->status->name ?? 'Unknown';
 
         $workItem->update($validated);
+        $workItem->refresh();
 
-        return redirect()
-            ->route('projects.work-items.index', $project->id)
-            ->with('success', 'Work item updated successfully.');
+        // Dispatch assignment event if the assignee changed
+        if ($workItem->assignee_id && $workItem->assignee_id != $oldAssigneeId) {
+            WorkItemAssignedEvent::dispatch($workItem, $workItem->assignee, auth()->user()->name);
+        }
+
+        // Dispatch status change event if the status changed
+        if ($workItem->status?->name !== $oldStatusName) {
+            WorkItemStatusChangedEvent::dispatch($workItem, $oldStatusName, $workItem->status->name, auth()->user()->name);
+        }
+
+        // Redirect back to the page the user came from (stored when the edit form was loaded)
+        $returnTo = session()->pull('work_item_return_to');
+        $fallback = route('projects.work-items.index', $project->id);
+
+        // Guard: don't redirect back to the edit form itself
+        if ($returnTo && ! str_contains($returnTo, '/edit')) {
+            return redirect($returnTo)->with('success', 'Work item updated successfully.');
+        }
+
+        return redirect($fallback)->with('success', 'Work item updated successfully.');
     }
 
+    /**
+     * Remove the specified work item from storage.
+     */
     public function destroy(projects $project, work_item $workItem)
     {
+        $workItem->loadMissing('project.members');
+        $this->authorize('work-item.delete', $workItem);
+
         $workItem->delete();
 
         return redirect()
-            ->route('projects.work-items.index', $project->id)
+            ->back(fallback: route('projects.work-items.index', $project->id))
             ->with('success', 'Work item deleted successfully.');
     }
 
+    /**
+     * Bulk update progress for multiple work items and automatically update their status.
+     *
+     * Updates status based on progress:
+     * - 0%: Sets to "To Do"
+     * - 0-100%: Sets to "In Progress"
+     * - 100%: Sets to "Done"
+     */
     public function bulkUpdateProgress(Request $request, projects $project)
     {
         $validated = $request->validate([
@@ -277,6 +403,7 @@ class WorkItemController extends Controller
             'progress' => 'required|integer|min:0|max:100',
         ]);
 
+        // Fetch the statuses to use for automatic status transitions
         $statusToDo = work_item_statuses::where('project_id', $project->id)
             ->where('name', 'To Do')
             ->first();
@@ -288,12 +415,14 @@ class WorkItemController extends Controller
             ->first();
 
         foreach ($validated['work_item_ids'] as $itemId) {
+            // Ensure the work item belongs to the current project
             $workItem = work_item::where('id', $itemId)
                 ->where('project_id', $project->id)
                 ->firstOrFail();
 
             $workItem->update(['progress' => $validated['progress']]);
 
+            // Automatically update status based on progress value
             $progress = $validated['progress'];
             if ($progress == 0 && $statusToDo) {
                 $workItem->update(['status_id' => $statusToDo->id]);
@@ -304,9 +433,14 @@ class WorkItemController extends Controller
             }
         }
 
-        return redirect()->back()->with('success', 'Progress updated successfully.');
+        return redirect()
+            ->back(fallback: route('projects.work-items.index', $project->id))
+            ->with('success', 'Progress updated successfully.');
     }
 
+    /**
+     * Update the status of a specific work item.
+     */
     public function updateStatus(Request $request, work_item $workItem)
     {
         $validated = $request->validate([
@@ -315,6 +449,8 @@ class WorkItemController extends Controller
 
         $workItem->update(['status_id' => $validated['status_id']]);
 
-        return redirect()->back()->with('success', 'Work item status updated.');
+        return redirect()
+            ->back(fallback: route('work-items.global'))
+            ->with('success', 'Work item status updated.');
     }
 }

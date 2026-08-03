@@ -5,6 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\work_item_groups;
 use Illuminate\Http\Request;
 
+/**
+ * Manages work item groups within projects.
+ * Groups organize work items under milestones for better structure.
+ */
 class WorkItemGroupsController extends Controller
 {
     /**

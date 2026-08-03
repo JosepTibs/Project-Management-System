@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { ArrowLeft, Check, Trash2, Plus, X, Users, FolderKanban, Target, FileText, AlertTriangle } from 'lucide-react';
-import { useState } from 'react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { ArrowLeft, Check, Trash2, Plus, X, Users, FolderKanban, Target, FileText, AlertTriangle, ChevronDown } from 'lucide-react';
+import { useState, useRef } from 'react';
 
 interface UserOption {
     id: number;
@@ -18,6 +19,7 @@ interface UserOption {
     lname: string;
     sname: string;
     email: string;
+    role?: string;
 }
 
 interface Member {
@@ -33,6 +35,7 @@ interface Group {
     description: string | null;
     start_date: string | null;
     end_date: string | null;
+    milestone_id: number | null;
 }
 
 interface Milestone {
@@ -87,10 +90,11 @@ export default function ProjectSetup() {
     // Members state
     const [selectedUserIds, setSelectedUserIds] = useState<number[]>(initialMembers.map(m => m.user_id));
     const [searchTerm, setSearchTerm] = useState('');
+    const [roleFilter, setRoleFilter] = useState('all');
 
     // Groups state (track id so existing groups can be matched by DB id rather than index)
-    const [groups, setGroups] = useState<{ id?: number; name: string; description: string; start_date: string; end_date: string }[]>(
-        initialGroups.map(g => ({ id: g.id, name: g.name, description: g.description || '', start_date: g.start_date || '', end_date: g.end_date || '' }))
+    const [groups, setGroups] = useState<{ id?: number; name: string; description: string; start_date: string; end_date: string; milestone_id: number | null }[]>(
+        initialGroups.map(g => ({ id: g.id, name: g.name, description: g.description || '', start_date: g.start_date || '', end_date: g.end_date || '', milestone_id: g.milestone_id || null }))
     );
 
     // Milestones state (track id so existing milestones can be matched by DB id)
@@ -105,11 +109,16 @@ export default function ProjectSetup() {
 
     const [processing, setProcessing] = useState(false);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+    const tempIdCounter = useRef(-1);
 
-    const filteredUsers = allUsers.filter(u =>
-        u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        u.email.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+     const uniqueRoles = [...new Set(allUsers.map(u => u.role).filter((r): r is string => r !== undefined))];
+
+    const filteredUsers = allUsers.filter(u => {
+        const matchesSearch = u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            u.email.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+        return matchesSearch && matchesRole;
+    });
 
     function toggleUser(userId: number) {
         setSelectedUserIds(prev =>
@@ -118,10 +127,11 @@ export default function ProjectSetup() {
     }
 
     function addGroup() {
-        setGroups(prev => [...prev, { name: '', description: '', start_date: '', end_date: '' }]);
+        const newId = tempIdCounter.current--;
+        setGroups(prev => [{ id: newId, name: '', description: '', start_date: '', end_date: '', milestone_id: null }, ...prev]);
     }
 
-    function updateGroup(index: number, field: string, value: string) {
+    function updateGroup(index: number, field: string, value: string | number | null) {
         setGroups(prev => prev.map((g, i) => i === index ? { ...g, [field]: value } : g));
     }
 
@@ -130,7 +140,7 @@ export default function ProjectSetup() {
     }
 
     function addMilestone() {
-        setMilestones(prev => [...prev, { name: '', description: '', start_date: '', target_date: '' }]);
+        setMilestones(prev => [{ name: '', description: '', start_date: '', target_date: '' }, ...prev]);
     }
 
     function updateMilestone(index: number, field: string, value: string) {
@@ -142,7 +152,7 @@ export default function ProjectSetup() {
     }
 
     function addWorkItem() {
-        setWorkItems(prev => [...prev, { title: '', description: '', priority: 'medium', due_date: '', assignee_id: null, group_id: null, status_id: statuses[0]?.id || null }]);
+        setWorkItems(prev => [{ title: '', description: '', priority: 'medium', due_date: '', assignee_id: null, group_id: null, status_id: statuses[0]?.id || null }, ...prev]);
     }
 
     function updateWorkItem(index: number, field: string, value: any) {
@@ -235,6 +245,25 @@ export default function ProjectSetup() {
                             onChange={e => setSearchTerm(e.target.value)}
                             className="max-w-sm"
                         />
+                        <div className="flex flex-wrap gap-2">
+                            <Badge
+                                variant={roleFilter === 'all' ? 'default' : 'outline'}
+                                className="cursor-pointer px-3 py-1.5"
+                                onClick={() => setRoleFilter('all')}
+                            >
+                                All
+                            </Badge>
+                            {uniqueRoles.map(role => (
+                                <Badge
+                                    key={role}
+                                    variant={roleFilter === role ? 'default' : 'outline'}
+                                    className="cursor-pointer px-3 py-1.5 capitalize"
+                                    onClick={() => setRoleFilter(role)}
+                                >
+                                    {role}
+                                </Badge>
+                            ))}
+                        </div>
                         <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
                             {filteredUsers.map(user => {
                                 const selected = selectedUserIds.includes(user.id);
@@ -247,6 +276,7 @@ export default function ProjectSetup() {
                                     >
                                         {selected && <Check className="mr-1 h-3 w-3" />}
                                         {user.username}
+                                        {user.role && <span className="text-xs opacity-70 ml-1">({user.role})</span>}
                                     </Badge>
                                 );
                             })}
@@ -260,18 +290,25 @@ export default function ProjectSetup() {
                 </Card>
 
                 {/* Section 2: Work Item Groups */}
+                 <Collapsible defaultOpen={false}>
                 <Card>
                     <CardHeader className="p-4 pb-0">
                         <div className="flex items-center justify-between">
-                            <CardTitle className="flex items-center gap-2 text-base">
+                             <CollapsibleTrigger asChild>
+                            <CardTitle className="flex items-center gap-2 text-base cursor-pointer hover:bg-muted/50 transition-colors select-none">
                                 <FolderKanban className="h-4 w-4" />
                                 Work Item Groups ({groups.length})
+                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
                             </CardTitle>
+                            
+                            </CollapsibleTrigger>
                             <Button variant="outline" size="sm" onClick={addGroup}>
                                 <Plus className="mr-1 h-3 w-3" /> Add Group
                             </Button>
                         </div>
                     </CardHeader>
+                    
+                    <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
                         {groups.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">No groups yet. Click "Add Group" to create one.</p>
@@ -294,28 +331,53 @@ export default function ProjectSetup() {
                                         <Label className="text-xs">End</Label>
                                         <Input type="date" value={group.end_date} onChange={e => updateGroup(i, 'end_date', e.target.value)} />
                                     </div>
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => removeGroup(i)}>
+                                    <div className="w-40 space-y-1">
+                                        <Label className="text-xs">Milestone</Label>
+                                        <select
+                                            value={group.milestone_id || ''}
+                                            onChange={e => updateGroup(i, 'milestone_id', e.target.value ? Number(e.target.value) : null)}
+                                            className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                                        >
+                                            <option value="">None</option>
+                                            {milestones.map(m => (
+                                                <option key={m.id} value={m.id}>{m.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => {
+                                        if (window.confirm("Are you sure you want to remove this group?")) {
+                                             removeGroup(i);
+                                         }
+                                    }}>
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                     </Button>
                                 </div>
                             ))
                         )}
                     </CardContent>
+                    </CollapsibleContent>
+                    
                 </Card>
+                </Collapsible>
 
                 {/* Section 3: Milestones */}
+                <Collapsible defaultOpen={false}>
                 <Card>
                     <CardHeader className="p-4 pb-0">
                         <div className="flex items-center justify-between">
-                            <CardTitle className="flex items-center gap-2 text-base">
+                             <CollapsibleTrigger asChild>
+                            <CardTitle className="flex items-center gap-2 text-base cursor-pointer hover:bg-muted/50 transition-colors select-none">
                                 <Target className="h-4 w-4" />
                                 Milestones ({milestones.length})
+                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
                             </CardTitle>
+                            </CollapsibleTrigger>
                             <Button variant="outline" size="sm" onClick={addMilestone}>
                                 <Plus className="mr-1 h-3 w-3" /> Add Milestone
                             </Button>
                         </div>
                     </CardHeader>
+                    <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
                         {milestones.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">No milestones yet. Click "Add Milestone" to create one.</p>
@@ -338,28 +400,39 @@ export default function ProjectSetup() {
                                         <Label className="text-xs">Target</Label>
                                         <Input type="date" value={milestone.target_date} onChange={e => updateMilestone(i, 'target_date', e.target.value)} />
                                     </div>
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => removeMilestone(i)}>
+                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => {
+                                        if (window.confirm("Are you sure you want to remove this Milestone?")) {
+                                             removeMilestone(i);
+                                         }
+                                    }}>
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                     </Button>
                                 </div>
                             ))
                         )}
                     </CardContent>
+                    </CollapsibleContent>
                 </Card>
+                </Collapsible>
 
                 {/* Section 4: Work Items */}
+                <Collapsible defaultOpen = {false}>
                 <Card>
                     <CardHeader className="p-4 pb-0">
                         <div className="flex items-center justify-between">
-                            <CardTitle className="flex items-center gap-2 text-base">
+                            <CollapsibleTrigger asChild>
+                            <CardTitle className="flex items-center gap-2 text-base cursor-pointer hover:bg-muted/50 transition-colors select-none">
                                 <FileText className="h-4 w-4" />
                                 Work Items ({workItems.length})
+                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
                             </CardTitle>
+                            </CollapsibleTrigger>
                             <Button variant="outline" size="sm" onClick={addWorkItem}>
                                 <Plus className="mr-1 h-3 w-3" /> Add Work Item
                             </Button>
                         </div>
                     </CardHeader>
+                     <CollapsibleContent>
                     <CardContent className="p-4 space-y-3">
                         {workItems.length === 0 ? (
                             <p className="text-sm text-muted-foreground text-center py-4">No work items yet. Click "Add Work Item" to create one.</p>
@@ -413,19 +486,25 @@ export default function ProjectSetup() {
                                             className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
                                         >
                                             <option value="">No group</option>
-                                            {groups.filter(g => g.name.trim() && g.id != null).map((g, gi) => (
+                                            {groups.filter(g => g.name.trim()).map((g, gi) => (
                                                 <option key={g.id} value={g.id}>{g.name}</option>
                                             ))}
                                         </select>
                                     </div>
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => removeWorkItem(i)}>
+                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => {
+                                        if (window.confirm("Are you sure you want to remove this Item?")) {
+                                             removeWorkItem(i);
+                                         }
+                                    }}>
                                         <Trash2 className="h-4 w-4 text-destructive" />
                                     </Button>
                                 </div>
                             ))
                         )}
                     </CardContent>
+                     </CollapsibleContent>
                 </Card>
+                </Collapsible>
 
                 {/* Warning banner */}
                 {errorMessage && (

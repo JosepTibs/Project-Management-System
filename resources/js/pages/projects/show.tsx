@@ -42,6 +42,7 @@ interface WorkItemGroup {
     start_date: string;
     end_date: string;
     milestone_id: number | null;
+    completion_percentage: number;
     work_items: WorkItem[];
 }
 
@@ -84,14 +85,12 @@ export default function ShowProject() {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={project.name} />
-            <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
+            <div className="flex h-full min-w-0 flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
-                    <Link href="/projects">
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <Button  variant="outline"  size="sm" onClick={() => window.history.back()} >
+                         <ArrowLeft className="mr-2 h-4 w-4" />
+                         Back
+                     </Button>
                     <h1 className="text-2xl font-bold">{project.name}</h1>
                     <div className="ml-auto flex items-center gap-2">
                         <Link href={`/projects/${project.id}/setup`}>
@@ -110,7 +109,7 @@ export default function ShowProject() {
                 </div>
 
                 {/* Project Info */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader>
                         <CardTitle className="text-lg">Project Details</CardTitle>
                     </CardHeader>
@@ -153,7 +152,7 @@ export default function ShowProject() {
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     {/* Members */}
-                    <Card>
+                    <Card className="min-w-0">
                         <CardHeader className="p-4 pb-0">
                             <CardTitle className="flex items-center gap-2 text-base">
                                 <Users className="h-4 w-4" />
@@ -174,7 +173,7 @@ export default function ShowProject() {
                                         {project.members.map((member: Member) => (
                                                 <TableRow key={member.id}>
                                                      <TableCell className="text-sm font-medium">
-                                                         <Link href={`/users/${member.id}/edit`} className="text-lg font-medium hover:underline leading-tight">
+                                                         <Link href={`/users/${member.user_id}`} className="text-m font-medium hover:underline leading-tight">
                                                              {member.user_name}
                                                          </Link>
                                                      </TableCell>
@@ -191,12 +190,12 @@ export default function ShowProject() {
                     </Card>
 
                     {/* Work Items */}
-                    <Card>
+                    <Card className="min-w-0">
                         <CardHeader className="p-4 pb-0">
                             <div className="flex items-center justify-between">
                                 <CardTitle className="flex items-center gap-2 text-base">
                                     <FileText className="h-4 w-4" />
-                                    Work Items ({project.work_items.length})
+                                    Work Item Groups ({project.work_item_groups.length})
                                 </CardTitle>
                                 <div className="flex items-center gap-2">
                         <Link href={`/projects/${project.id}/kanban`}>
@@ -249,7 +248,7 @@ export default function ShowProject() {
                                                                      {groupItems.map((item: WorkItem) => (
                                                                          <TableRow key={item.id}>
                                                                              <TableCell className="text-sm font-medium">
-                                                                                 <Link href={`/projects/${project.id}/work-items/${item.id}`} className="text-lg font-medium hover:underline leading-tight">
+                                                                                 <Link href={`/projects/${project.id}/work-items/${item.id}`} className="text-m font-medium hover:underline leading-tight">
                                                                                      {item.title}
                                                                                  </Link>
                                                                              </TableCell>
@@ -312,7 +311,7 @@ export default function ShowProject() {
                 </div>
 
                 {/* Milestones */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader className="p-4 pb-0">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Target className="h-4 w-4" />
@@ -357,8 +356,8 @@ export default function ShowProject() {
                 </Card>
 
                 {/* Gantt Chart */}
-                <Collapsible defaultOpen={false}>
-                    <Card>
+                <Collapsible defaultOpen={false} className="min-w-0">
+                    <Card className="min-w-0 overflow-hidden">
                         <CollapsibleTrigger asChild>
                             <CardHeader className="p-4 cursor-pointer hover:bg-muted/50 transition-colors select-none">
                                 <div className="flex items-center justify-between">
@@ -370,8 +369,8 @@ export default function ShowProject() {
                                 </div>
                             </CardHeader>
                         </CollapsibleTrigger>
-                        <CollapsibleContent>
-                            <CardContent className="p-4 pt-0">
+                        <CollapsibleContent className="min-w-0">
+                            <CardContent className="min-w-0 overflow-x-auto p-4 pt-0">
                                 <GanttChart 
                                     milestones={project.milestones}
                                     workItemGroups={project.work_item_groups}
