@@ -113,19 +113,16 @@ class CommentsController extends Controller
             'content' => $validated['content'],
         ]);
 
-        // Notify the assignee if the reply wasn't from them
+        // Notify the assignee and/or original comment author.
+        // Dispatch once so the listener's $notified guard can deduplicate
+        // when the assignee and original comment author are the same user.
         $workItem = work_item::find($comment->commentable_id);
-        if ($workItem && $workItem->assignee_id && $workItem->assignee_id !== auth()->id()) {
-            CommentAddedEvent::dispatch(
-                $workItem,
-                auth()->user(),
-                substr($reply->content, 0, 100)
-            );
-        }
 
-        // Also notify the original comment author if someone else replies
-        if ($comment->user_id !== auth()->id()) {
-            $originalAuthor = User::find($comment->user_id);
+        if ($workItem) {
+            $originalAuthor = ($comment->user_id !== auth()->id())
+                ? User::find($comment->user_id)
+                : null;
+
             CommentAddedEvent::dispatch(
                 $workItem,
                 auth()->user(),

@@ -22,9 +22,9 @@ class NotificationController extends Controller
 
     public function getUnreadCount()
     {
-        return response()->json([
+        return [
             'count' => auth()->user()->unreadNotifications()->count(),
-        ]);
+        ];
     }
 
     public function getRecent()
@@ -45,10 +45,10 @@ class NotificationController extends Controller
                 ];
             });
 
-        return response()->json([
+        return [
             'notifications' => $notifications,
             'unread_count' => auth()->user()->unreadNotifications()->count(),
-        ]);
+        ];
     }
 
     public function markAsRead(Notification $notification)
@@ -66,14 +66,14 @@ class NotificationController extends Controller
     {
         auth()->user()->unreadNotifications->markAsRead();
 
-        return response()->json(['success' => true]);
+        return ['success' => true];
     }
 
     public function getSettings()
     {
         $settings = auth()->user()->notificationSettings;
 
-        return response()->json($settings);
+        return $settings;
     }
 
     public function updateSettings(Request $request)
@@ -88,6 +88,6 @@ class NotificationController extends Controller
         $settings = auth()->user()->notificationSettings;
         $settings->update($validated);
 
-        return response()->json(['success' => true, 'settings' => $settings]);
+        return ['success' => true, 'settings' => $settings];
     }
 }

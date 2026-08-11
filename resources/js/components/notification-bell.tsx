@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEchoNotification } from '@laravel/echo-react';
 
 interface NotificationData {
     id: string;
@@ -25,6 +26,14 @@ export function NotificationBell() {
     const [isOpen, setIsOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const {auth} = usePage().props as any;
+    const userId = auth?.user?.id;
+
+
+    useEchoNotification(`App.Models.User.${userId}`, () => {
+    fetchRecent();
+    fetchUnreadCount();
+});
 
     useEffect(() => {
         fetchRecent();

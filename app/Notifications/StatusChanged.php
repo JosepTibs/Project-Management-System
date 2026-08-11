@@ -4,9 +4,11 @@ namespace App\Notifications;
 
 use App\Models\work_item;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Notification;
 
-class StatusChanged extends Notification
+class StatusChanged extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -33,7 +35,7 @@ class StatusChanged extends Notification
      */
     public function via($notifiable): array
     {
-        return ['database'];
+        return ['database', 'broadcast'];
     }
 
     /**
@@ -52,6 +54,24 @@ class StatusChanged extends Notification
             'old_status' => $this->oldStatus,
             'new_status' => $this->newStatus,
         ];
+    }
+
+    /**
+     * Get the broadcast representation of the notification.
+     */
+    public function toBroadcast($notifiable): BroadcastMessage
+    {
+        return new BroadcastMessage([
+            'message' => "{$this->actorName} changed status of '{$this->workItem->title}' from {$this->oldStatus} to {$this->newStatus}",
+            'work_item_id' => $this->workItem->id,
+            'project_id' => $this->workItem->project_id,
+            'project_name' => $this->workItem->project?->name ?? 'Unknown',
+            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
+            'type' => 'status_changed',
+            'actor_name' => $this->actorName,
+            'old_status' => $this->oldStatus,
+            'new_status' => $this->newStatus,
+        ]);
     }
 
     /**

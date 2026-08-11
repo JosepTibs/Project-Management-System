@@ -24,16 +24,15 @@ class AuthServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        
         //
-        Gate::before(function($user){
-            if($user->roles->contains('name','admin')){
-                return true;
-            }
-        });
+        Gate::before(function ($user) {
+    return $user->roles->contains('name', 'Admin') ? true : null;
+});
     //project crud
 
         Gate::define('view',function($user, projects $project){
-            return $user->roles->contains('name',['admin','manager'])
+            return $user->roles->contains('name',['Admin','Manager'])
             || $project->members->contains('user_id', $user->id);
     });
 

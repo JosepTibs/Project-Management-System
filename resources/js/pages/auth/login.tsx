@@ -1,6 +1,6 @@
 import { Head, useForm } from '@inertiajs/react';
-import { LoaderCircle } from 'lucide-react';
-import { FormEventHandler } from 'react';
+import { LoaderCircle, Eye, EyeOff } from 'lucide-react';
+import React, { FormEventHandler, useState } from 'react';
 
 import InputError from '@/components/input-error';
 import TextLink from '@/components/text-link';
@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import AuthLayout from '@/layouts/auth-layout';
 
 interface LoginForm {
+     [key: string]: string | boolean;
     email: string;
     password: string;
     remember: boolean;
@@ -27,6 +28,8 @@ export default function Login({ status, canResetPassword }: LoginProps) {
         password: '',
         remember: false,
     });
+
+    const [showPassword, setShowPassword] = useState(false);
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -53,29 +56,45 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                             value={data.email}
                             onChange={(e) => setData('email', e.target.value)}
                             placeholder="email@example.com"
+                            className="border-[#131F42] bg-[#131F42] text-[#F4F6F9] placeholder:text-[#8C9A9E] focus:border-[#20E2CD] focus:ring-[#20E2CD] focus:ring-offset-0"
                         />
                         <InputError message={errors.email} />
                     </div>
 
                     <div className="grid gap-2">
                         <div className="flex items-center">
-                            <Label htmlFor="password">Password</Label>
+                            <Label htmlFor="password" className="text-[#F4F6F9]">Password</Label>
                             {canResetPassword && (
-                                <TextLink href={route('password.request')} className="ml-auto text-sm" tabIndex={5}>
+                                <TextLink href={route('password.request')} className="ml-auto text-sm text-[#20E2CD]" tabIndex={5}>
                                     Forgot password?
                                 </TextLink>
                             )}
+                            
                         </div>
+                        <div className="relative w-full">
                         <Input
                             id="password"
-                            type="password"
                             required
+                            type={showPassword ? 'text' : 'password'}
                             tabIndex={2}
                             autoComplete="current-password"
                             value={data.password}
                             onChange={(e) => setData('password', e.target.value)}
                             placeholder="Password"
+                            className='pr-10'
+
+                            
                         />
+                        
+                       
+                        <button
+                        type = 'button'
+                        onClick={()=> setShowPassword(!showPassword)}
+                        className = "absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                         {showPassword ? <EyeOff className='h-5 w-5'/> : <Eye className='h-5 w-5'/>}  
+                        </button>
+                        </div>
                         <InputError message={errors.password} />
                     </div>
 

@@ -6,10 +6,11 @@ use App\Models\work_item;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class WorkItemStatusChangedEvent
+class WorkItemStatusChangedEvent implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -53,7 +54,27 @@ class WorkItemStatusChangedEvent
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('channel-name'),
+            new PrivateChannel('project.'.$this->workItem->project_id),
+        ];
+    }
+
+    /**
+     * Get the data to broadcast.
+     *
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'message' => "'{$this->workItem->title}' status changed to {$this->newStatus}",
+            'work_item_id' => $this->workItem->id,
+            'project_id' => $this->workItem->project_id,
+            'project_name' => $this->workItem->project?->name ?? 'Unknown',
+            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
+            'type' => 'status_changed',
+            'actor_name' => $this->actorName,
+            'old_status' => $this->oldStatus,
+            'new_status' => $this->newStatus,
         ];
     }
 }

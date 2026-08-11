@@ -13,6 +13,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - inertiajs/inertia-laravel (INERTIA_LARAVEL) - v2
 - laravel/framework (LARAVEL) - v12
 - laravel/prompts (PROMPTS) - v0
+- laravel/reverb (REVERB) - v1
 - tightenco/ziggy (ZIGGY) - v2
 - laravel/boost (BOOST) - v2
 - laravel/mcp (MCP) - v0
@@ -24,7 +25,9 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - @inertiajs/react (INERTIA_REACT) - v2
 - react (REACT) - v19
 - tailwindcss (TAILWINDCSS) - v4
+- @laravel/echo-react (ECHO_REACT) - v2
 - eslint (ESLINT) - v9
+- laravel-echo (ECHO) - v2
 - prettier (PRETTIER) - v3
 
 ## Skills Activation

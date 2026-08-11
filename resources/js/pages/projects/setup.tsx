@@ -288,7 +288,62 @@ export default function ProjectSetup() {
                         )}
                     </CardContent>
                 </Card>
-
+                
+                {/* Section 3: Milestones */}
+                <Collapsible defaultOpen={false}>
+                <Card>
+                    <CardHeader className="p-4 pb-0">
+                        <div className="flex items-center justify-between">
+                             <CollapsibleTrigger asChild>
+                            <CardTitle className="flex items-center gap-2 text-base cursor-pointer hover:bg-muted/50 transition-colors select-none">
+                                <Target className="h-4 w-4" />
+                                Milestones ({milestones.length})
+                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
+                            </CardTitle>
+                            </CollapsibleTrigger>
+                            <Button variant="outline" size="sm" onClick={addMilestone}>
+                                <Plus className="mr-1 h-3 w-3" /> Add Milestone
+                            </Button>
+                        </div>
+                    </CardHeader>
+                    <CollapsibleContent>
+                    <CardContent className="p-4 space-y-3">
+                        {milestones.length === 0 ? (
+                            <p className="text-sm text-muted-foreground text-center py-4">No milestones yet. Click "Add Milestone" to create one.</p>
+                        ) : (
+                            milestones.map((milestone, i) => (
+                                <div key={i} className="flex flex-wrap items-end gap-3 rounded-lg border p-3">
+                                    <div className="flex-1 min-w-[150px] space-y-1">
+                                        <Label className="text-xs">Name</Label>
+                                        <Input value={milestone.name} onChange={e => updateMilestone(i, 'name', e.target.value)} placeholder="Milestone name" />
+                                    </div>
+                                    <div className="flex-1 min-w-[150px] space-y-1">
+                                        <Label className="text-xs">Description</Label>
+                                        <Input value={milestone.description} onChange={e => updateMilestone(i, 'description', e.target.value)} placeholder="Optional" />
+                                    </div>
+                                    <div className="w-36 space-y-1">
+                                        <Label className="text-xs">Start</Label>
+                                        <Input type="date" value={milestone.start_date} onChange={e => updateMilestone(i, 'start_date', e.target.value)} />
+                                    </div>
+                                    <div className="w-36 space-y-1">
+                                        <Label className="text-xs">Target</Label>
+                                        <Input type="date" value={milestone.target_date} onChange={e => updateMilestone(i, 'target_date', e.target.value)} />
+                                    </div>
+                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => {
+                                        if (window.confirm("Are you sure you want to remove this Milestone?")) {
+                                             removeMilestone(i);
+                                         }
+                                    }}>
+                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                    </Button>
+                                </div>
+                            ))
+                        )}
+                    </CardContent>
+                    </CollapsibleContent>
+                </Card>
+                </Collapsible>
+                
                 {/* Section 2: Work Item Groups */}
                  <Collapsible defaultOpen={false}>
                 <Card>
@@ -360,60 +415,6 @@ export default function ProjectSetup() {
                 </Card>
                 </Collapsible>
 
-                {/* Section 3: Milestones */}
-                <Collapsible defaultOpen={false}>
-                <Card>
-                    <CardHeader className="p-4 pb-0">
-                        <div className="flex items-center justify-between">
-                             <CollapsibleTrigger asChild>
-                            <CardTitle className="flex items-center gap-2 text-base cursor-pointer hover:bg-muted/50 transition-colors select-none">
-                                <Target className="h-4 w-4" />
-                                Milestones ({milestones.length})
-                                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
-                            </CardTitle>
-                            </CollapsibleTrigger>
-                            <Button variant="outline" size="sm" onClick={addMilestone}>
-                                <Plus className="mr-1 h-3 w-3" /> Add Milestone
-                            </Button>
-                        </div>
-                    </CardHeader>
-                    <CollapsibleContent>
-                    <CardContent className="p-4 space-y-3">
-                        {milestones.length === 0 ? (
-                            <p className="text-sm text-muted-foreground text-center py-4">No milestones yet. Click "Add Milestone" to create one.</p>
-                        ) : (
-                            milestones.map((milestone, i) => (
-                                <div key={i} className="flex flex-wrap items-end gap-3 rounded-lg border p-3">
-                                    <div className="flex-1 min-w-[150px] space-y-1">
-                                        <Label className="text-xs">Name</Label>
-                                        <Input value={milestone.name} onChange={e => updateMilestone(i, 'name', e.target.value)} placeholder="Milestone name" />
-                                    </div>
-                                    <div className="flex-1 min-w-[150px] space-y-1">
-                                        <Label className="text-xs">Description</Label>
-                                        <Input value={milestone.description} onChange={e => updateMilestone(i, 'description', e.target.value)} placeholder="Optional" />
-                                    </div>
-                                    <div className="w-36 space-y-1">
-                                        <Label className="text-xs">Start</Label>
-                                        <Input type="date" value={milestone.start_date} onChange={e => updateMilestone(i, 'start_date', e.target.value)} />
-                                    </div>
-                                    <div className="w-36 space-y-1">
-                                        <Label className="text-xs">Target</Label>
-                                        <Input type="date" value={milestone.target_date} onChange={e => updateMilestone(i, 'target_date', e.target.value)} />
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="shrink-0" onClick={() => {
-                                        if (window.confirm("Are you sure you want to remove this Milestone?")) {
-                                             removeMilestone(i);
-                                         }
-                                    }}>
-                                        <Trash2 className="h-4 w-4 text-destructive" />
-                                    </Button>
-                                </div>
-                            ))
-                        )}
-                    </CardContent>
-                    </CollapsibleContent>
-                </Card>
-                </Collapsible>
 
                 {/* Section 4: Work Items */}
                 <Collapsible defaultOpen = {false}>

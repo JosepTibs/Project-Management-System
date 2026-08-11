@@ -8,13 +8,15 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Foundation\Events\Dispatchable;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+
 use Illuminate\Queue\SerializesModels;
 
 /**
  * Dispatched when a comment is added to a work item.
  * Notifies relevant users (assignee, original comment author).
  */
-class CommentAddedEvent
+class CommentAddedEvent implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -63,7 +65,26 @@ class CommentAddedEvent
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel('channel-name'),
+            new PrivateChannel('project.'.$this->workItem->project_id),
+        ];
+    }
+
+    /**
+     * Get the data to broadcast.
+     *
+     * @return array<string, mixed>
+     */
+    public function broadcastWith(): array
+    {
+        return [
+            'message' => "{$this->commenter->name} commented on '{$this->workItem->title}'",
+            'work_item_id' => $this->workItem->id,
+            'project_id' => $this->workItem->project_id,
+            'project_name' => $this->workItem->project?->name ?? 'Unknown',
+            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
+            'type' => 'comment_added',
+            'actor_name' => $this->commenter->name,
+            'comment_preview' => $this->commentPreview,
         ];
     }
 }

@@ -20,6 +20,10 @@ class DatabaseSeeder extends Seeder
             MilestoneSeeder::class,
             WorkItemGroupSeeder::class,
             WorkItemSeeder::class,
+            TagSeeder::class,
+            SubtaskSeeder::class,
+            DependencySeeder::class,
+            WorkItemTagSeeder::class,
             ActivityLogSeeder::class,
             LoginActivitySeeder::class,
         ]);

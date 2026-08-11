@@ -6,10 +6,11 @@ use App\Models\User;
 use App\Models\work_item;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class CommentAdded extends Notification
+class CommentAdded extends Notification implements ShouldQueue
 {
     use Queueable;
 
@@ -34,13 +35,13 @@ class CommentAdded extends Notification
      */
     public function via($notifiable): array
     {
-        return ['database'];
+        return ['database', 'broadcast'];
     }
 
     /**
-     * Get the mail representation of the notification.
+     * Get the database representation of the notification.
      */
-    public function toDatabase( $notifiable): array
+    public function toDatabase($notifiable): array
     {
         return [
             'message' => "{$this->commenter->name} commented on '{$this->workItem->title}'",
@@ -52,6 +53,23 @@ class CommentAdded extends Notification
             'actor_name' => $this->commenter->name,
             'comment_preview' => $this->commentPreview,
         ];
+    }
+
+    /**
+     * Get the broadcast representation of the notification.
+     */
+    public function toBroadcast($notifiable): BroadcastMessage
+    {
+        return new BroadcastMessage([
+            'message' => "{$this->commenter->name} commented on '{$this->workItem->title}'",
+            'work_item_id' => $this->workItem->id,
+            'project_id' => $this->workItem->project_id,
+            'project_name' => $this->workItem->project?->name ?? 'Unknown',
+            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
+            'type' => 'comment_added',
+            'actor_name' => $this->commenter->name,
+            'comment_preview' => $this->commentPreview,
+        ]);
     }
 
     /**

@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivityLogsController;
 use App\Http\Controllers\CommentsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileAttachmentController;
+use App\Http\Controllers\GanttController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ProjectsController;
@@ -13,9 +14,9 @@ use App\Http\Controllers\WorkItemController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', function () {
-    return Inertia::render('welcome');
-})->name('home');
+
+
+Route::redirect('/', '/login')->name('home');
 
 Route::middleware(['auth'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -27,6 +28,23 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('projects', ProjectsController::class);
     Route::resource('projects.work-items', WorkItemController::class);
     Route::get('projects/{project}/kanban', [ProjectsController::class, 'kanban'])->name('projects.kanban');
+    Route::get('projects/{project}/gantt', [GanttController::class, 'index'])->name('projects.gantt');
+
+    // Gantt Chart API Endpoints
+    Route::patch('projects/{project}/work-items/{workItem}/resize', [GanttController::class, 'resize'])->name('projects.gantt.resize');
+    Route::patch('projects/{project}/work-items/{workItem}/move', [GanttController::class, 'move'])->name('projects.gantt.move');
+    Route::get('projects/{project}/dependencies', [GanttController::class, 'getDependencies'])->name('projects.gantt.dependencies');
+    Route::post('projects/{project}/dependencies', [GanttController::class, 'storeDependency'])->name('projects.gantt.dependencies.store');
+    Route::delete('projects/{project}/dependencies/{dependency}', [GanttController::class, 'destroyDependency'])->name('projects.gantt.dependencies.destroy');
+    
+     // Gantt - Groups
+    Route::patch('projects/{project}/groups/{group}/move', [GanttController::class, 'moveGroup'])->name('groups.move');
+    Route::patch('projects/{project}/groups/{group}/resize', [GanttController::class, 'resizeGroup'])->name('groups.resize');
+    
+    // Gantt - Milestones
+    Route::patch('projects/{project}/milestones/{milestone}/move', [GanttController::class, 'moveMilestone'])->name('milestones.move');
+       
+
     Route::get('work-items', [WorkItemController::class, 'globalIndex'])->name('work-items.global');
     Route::patch('projects/{project}/work-items/bulk-progress', [WorkItemController::class, 'bulkUpdateProgress'])->name('work-items.bulk-progress');
     Route::patch('work-items/{workItem}/status', [WorkItemController::class, 'updateStatus'])->name('work-items.status.update');

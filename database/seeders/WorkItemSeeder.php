@@ -166,6 +166,7 @@ class WorkItemSeeder extends Seeder
                     'description' => "Task: {$title} for the {$project->name} project.",
                     'assignee_id' => $assignee->id,
                     'priority' => $priority,
+                    'start_date' => $dueDate->copy()->subDays(rand(1, 7))->format('Y-m-d'),
                     'due_date' => $dueDate->format('Y-m-d'),
                     'progress' => rand(0, 100),
                 ]);

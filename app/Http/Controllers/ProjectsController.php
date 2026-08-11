@@ -112,6 +112,10 @@ class ProjectsController extends Controller
                         'priority' => $item->priority,
                         'due_date' => $item->due_date?->format('Y-m-d'),
                         'group_id' => $item->group_id,
+                        'progress' => $item->progress ?? 0,
+                        'description' => $item->description,
+                        'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
+                        'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
                     ];
                 }),
                 'milestones' => $project->milestones->map(function ($milestone) {
@@ -141,14 +145,19 @@ class ProjectsController extends Controller
                         'work_items' => $group->workItems->map(function ($item) {
                             return [
                                 'id' => $item->id,
-                                'title' => $item->title,
-                                'priority' => $item->priority,
-                                'due_date' => $item->due_date?->format('Y-m-d'),
-                                'progress' => $item->progress ?? 0,
+                        'title' => $item->title,
+                        'priority' => $item->priority,
+                        'due_date' => $item->due_date?->format('Y-m-d'),
+                        'group_id' => $item->group_id,
+                        'progress' => $item->progress ?? 0,
+                        'description' => $item->description,
+                        'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
+                        'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
                             ];
                         }),
                     ];
                 }),
+                
             ],
             'can' => [
                 'view' => $user->can('view', $project),
@@ -200,6 +209,13 @@ class ProjectsController extends Controller
      */
     public function kanban(projects $project)
     {
+        $project->load([
+    'workItemGroups',
+    'milestones',
+    'workItems.status',
+    'workItems.assignee',
+    'workItems.subtasks',   
+    ]);
         // Fetch and group work items by status name
         $workItems = work_item::where('project_id', $project->id)
             ->with(['status', 'assignee', 'group'])
@@ -243,7 +259,43 @@ class ProjectsController extends Controller
             ],
             'columns' => $columns,
             'statuses' => $statuses,
-        ]);
+
+            'workItems' => $project->workItems->map(fn ($item) => [
+            'id' => $item->id,
+            'group_id' => $item->group_id,
+            'title' => $item->title,
+            'description' => $item->description,
+            'start_date' => $item->start_date?->format('Y-m-d'),
+            'due_date' => $item->due_date?->format('Y-m-d'),
+            'progress' => $item->progress ?? 0,
+            'priority' => $item->priority,
+            'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
+            'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
+            'subtasks' => $item->subtasks->map(fn ($sub) => [
+                'id' => $sub->id,
+                'title' => $sub->title,
+                'description' => $sub->description,
+                'due_date' => $sub->due_date?->format('Y-m-d'),
+                'completed_at' => $sub->completed_at?->format('Y-m-d'),
+            ]),
+        ]),
+        'milestones' => $project->milestones->map(fn ($m) => [
+            'id' => $m->id,
+            'name' => $m->name,
+            'description' => $m->description,
+            'target_date' => $m->target_date->format('Y-m-d'),
+            'completed_at' => $m->completed_at,
+        ]),
+        'workItemGroups' => $project->workItemGroups->map(fn ($group) => [
+            'id' => $group->id,
+            'name' => $group->name,
+            'description' => $group->description,
+            'start_date' => $group->start_date?->format('Y-m-d'),
+            'end_date' => $group->end_date?->format('Y-m-d'),
+            'milestone_id' => $group->milestone_id,
+        ]),
+    ]);
+        
     }
 
     /**

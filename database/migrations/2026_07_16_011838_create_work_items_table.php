@@ -20,6 +20,7 @@ return new class extends Migration
             $table->text('description');
             $table->unsignedBigInteger('assignee_id');
             $table->enum('priority',['low','medium','high','critical']);
+            
             $table->date('due_date');
             $table->unsignedTinyInteger('progress')->default(0);
             $table->timestamps();

@@ -28,6 +28,7 @@ class SendCommentAddedNotification
      */
     public function handle(CommentAddedEvent $event): void
     {
+        $notified = [];
         // Notify the assignee if they didn't write the comment themselves
         if ($event->workItem->assignee && $event->workItem->assignee->id !== $event->commenter->id) {
             // Check if the assignee has comment notifications enabled
@@ -36,12 +37,12 @@ class SendCommentAddedNotification
             if ($settings && $settings->comment_added) {
                 $event->workItem->assignee->notify(
                     new CommentAdded($event->workItem, $event->commenter, $event->commentPreview)
-                );
+                ); $notified[] = $event->workItem->assignee->id;
             }
         }
 
         // Notify the original comment author if this is a reply and they didn't reply to themselves
-        if ($event->originalCommentAuthor && $event->originalCommentAuthor->id !== $event->commenter->id) {
+        if ($event->originalCommentAuthor && $event->originalCommentAuthor->id !== $event->commenter->id && !in_array($event->originalCommentAuthor->id, $notified)) {
             // Check if the original author has comment notifications enabled
             $settings = $event->originalCommentAuthor->notificationSettings;
 

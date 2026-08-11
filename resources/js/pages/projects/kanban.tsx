@@ -2,8 +2,12 @@ import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Columns3 } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
+import { useState } from 'react';
 import KanbanBoard from '@/components/kanban/kanban-board';
+import InteractiveGanttChart from '@/components/interactive-gantt-chart';
+import CalendarView from '@/components/calendar-view';
+import ViewSelector from '@/components/view-selector';
 
 interface KanbanCardData {
     id: number;
@@ -32,20 +36,35 @@ interface KanbanPageProps extends Record<string, unknown> {
     };
     columns: KanbanColumnData[];
     statuses: StatusData[];
+    workItems?: any[];
+    milestones?: any[];
+    workItemGroups?: any[];
 }
 
 export default function Kanban() {
-    const { project, columns, statuses } = usePage<KanbanPageProps>().props;
+    const { project, columns, statuses, workItems, milestones, workItemGroups } = usePage<KanbanPageProps>().props;
+    const params = new URLSearchParams(window.location.search);
+    const initialView = (params.get('view') as 'kanban' | 'gantt' | 'calendar') || 'kanban';
+    const [currentView, setCurrentView] = useState<'kanban' | 'gantt' | 'calendar'>(initialView);
+    // Update URL when view changes
+    const handleViewChange = (view: 'kanban' | 'gantt' | 'calendar') => {
+        setCurrentView(view);
+        const url = new URL(window.location.href);
+        url.searchParams.set('view', view);
+        window.history.replaceState({}, '', url.toString());
+    };
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Projects', href: '/projects' },
         { title: project.name, href: `/projects/${project.id}` },
-        { title: 'Kanban', href: `/projects/${project.id}/kanban` },
+        { title: currentView.charAt(0).toUpperCase() + currentView.slice(1), href: `/projects/${project.id}/kanban` },
     ];
+    
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={`${project.name} - Kanban`} />
+            <Head title={`${project.name} - ${currentView.charAt(0).toUpperCase() + currentView.slice(1)}`} />
+            
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
                     <Link href={`/projects/${project.id}`}>
@@ -56,13 +75,37 @@ export default function Kanban() {
                     </Link>
                     <h1 className="text-2xl font-bold">{project.name}</h1>
                     <div className="ml-auto flex items-center gap-2">
-                        <Columns3 className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Kanban Board</span>
+                        <ViewSelector 
+                            currentView={currentView} 
+                            onViewChange={handleViewChange}
+                        />
                     </div>
                 </div>
 
                 <div className="flex-1 overflow-hidden">
-                    <KanbanBoard columns={columns} statuses={statuses} />
+                    {currentView === 'kanban' && (
+                        <KanbanBoard columns={columns} statuses={statuses} />
+                    )}
+                    {currentView === 'gantt' && (
+                        <InteractiveGanttChart
+                            projectId={project.id}
+                            workItems={workItems || []}
+                            milestones={milestones || []}
+                            workItemGroups={workItemGroups || []}
+                        />
+                    )}
+                    {currentView === 'calendar' && (
+                        <CalendarView
+                            workItems={(workItems || []).map(item => ({
+                                ...item,
+                                due_date: item.due_date,
+                            }))}
+                            milestones={(milestones || []).map(m => ({
+                                ...m,
+                                target_date: m.target_date,
+                            }))}
+                        />
+                    )}
                 </div>
             </div>
         </AppLayout>

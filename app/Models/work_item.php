@@ -3,9 +3,13 @@
 namespace App\Models;
 
 use App\Traits\LogsActivity;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+
 
 /**
  * Represents a work item/task within a project.
@@ -27,6 +31,7 @@ class work_item extends Model
         'description',
         'assignee_id',
         'priority',
+        'start_date',
         'due_date',
         'progress',
     ];
@@ -89,4 +94,33 @@ class work_item extends Model
     {
         return $this->morphMany(file_attachment::class, 'attachable');
     }
+
+    public function subtasks(): HasMany
+    {
+    return $this->hasMany(subtasks::class,'work_item_id');
+    }
+
+    public function predecessors(): BelongsToMany
+    {
+        return $this->belongsToMany(work_item::class, 'dependencies', 'successor_id', 'predecessor_id')->withPivot(['type', 'lag'])->withTimestamps();
+    }
+    public function successors(): BelongsToMany
+    {
+        return $this->belongsToMany(work_item::class, 'dependencies', 'predecessor_id', 'successor_id')->withPivot(['type', 'lag'])->withTimestamps();
+    }
+
+    public function durationInDays(): Attribute
+    {
+        return Attribute::make(
+            get: fn() => $this->start_date && $this->due_date ? max(0, $this->start_date->diffInDays($this->due_date)): null,
+
+            
+        );
+    }
+
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(tags::class, 'work_item_tags', 'work_item_id', 'tag_id')->withTimestamps();
+    }
 }
+
