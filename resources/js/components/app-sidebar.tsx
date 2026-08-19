@@ -3,10 +3,20 @@ import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Users, Workflow, FileText, User, ActivityIcon } from 'lucide-react';
+import { Link, usePage } from '@inertiajs/react';
+import { BookOpen, Folder, LayoutGrid, Users, Workflow, FileText, User, ActivityIcon, ActivitySquare } from 'lucide-react';
 import AppLogo from './app-logo';
 
+type pageProps = {
+    auth: {
+        user: {
+            id: number;
+            name: string;
+            email: string;
+        };
+        roles: string [];
+    };
+};
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
@@ -22,11 +32,19 @@ const mainNavItems: NavItem[] = [
         title: 'Users',
         url: '/users',
         icon: Users,
+        roles: ['admin'],
     },
     {
         title: 'Projects',
         url: '/projects',
+        icon: ActivitySquare,
+        roles: ['admin']
+    },
+    {
+        title: ' My Projects',
+        url: '/projects',
         icon: Workflow,
+        roles: ['member', 'project manager' ]
 
     },
     {
@@ -38,6 +56,7 @@ const mainNavItems: NavItem[] = [
         title: 'Activity Log',
         url: '/activity-logs',
         icon: ActivityIcon,
+        roles: ['admin']
     }
 ];
 
@@ -55,6 +74,15 @@ const footerNavItems: NavItem[] = [
 ];
 
 export function AppSidebar() {
+
+    const { auth } = usePage<pageProps>().props;
+
+    const visibleNavItems = mainNavItems.filter((item) => {
+        if(!item.roles){
+            return true;
+        }
+        return item.roles.some((role) => auth.roles.includes(role));
+    });
     return (
         <Sidebar collapsible="icon" variant="inset">
             <SidebarHeader>
@@ -70,7 +98,7 @@ export function AppSidebar() {
             </SidebarHeader>
 
             <SidebarContent>
-                <NavMain items={mainNavItems} />
+                <NavMain items={visibleNavItems} />
             </SidebarContent>
 
             <SidebarFooter>

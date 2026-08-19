@@ -14,14 +14,16 @@ class DatabaseSeeder extends Seeder
             RoleHasPermissionSeeder::class,
             UserSeeder::class,
             ModelHasRoleSeeder::class,
+            ProjectStatusSeeder::class,
             ProjectSeeder::class,
             ProjectMemberSeeder::class,
+            
             WorkItemStatusSeeder::class,
             MilestoneSeeder::class,
             WorkItemGroupSeeder::class,
             WorkItemSeeder::class,
             TagSeeder::class,
-            SubtaskSeeder::class,
+            
             DependencySeeder::class,
             WorkItemTagSeeder::class,
             ActivityLogSeeder::class,

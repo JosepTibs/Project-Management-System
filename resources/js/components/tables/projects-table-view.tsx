@@ -8,9 +8,11 @@ import type { ProjectItem } from '@/pages/projects/index';
 interface ProjectsTableViewProps {
     projects: ProjectItem[];
     onDelete: (projectId: number, projectName: string) => void;
+    onEdit?: (projectId: number) => void;
+    editLoading?: boolean;
 }
 
-export function ProjectsTableView({ projects, onDelete }: ProjectsTableViewProps) {
+export function ProjectsTableView({ projects, onDelete, onEdit, editLoading }: ProjectsTableViewProps) {
     return (
         <Card>
             <CardHeader className="p-0">
@@ -37,7 +39,7 @@ export function ProjectsTableView({ projects, onDelete }: ProjectsTableViewProps
                                         </Link>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground max-w-xs truncate">
-                                        {project.description || '—'}
+                                        {project.description || 'ï¿½'}
                                     </TableCell>
                                     <TableCell>
                                         <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
@@ -69,11 +71,15 @@ export function ProjectsTableView({ projects, onDelete }: ProjectsTableViewProps
                                                     <Eye className="h-4 w-4" />
                                                 </Button>
                                             </Link>
-                                            <Link href={`/projects/${project.id}/edit`}>
-                                                <Button variant="ghost" size="sm" title="Edit">
-                                                    <Pencil className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                title="Edit"
+                                                onClick={() => onEdit?.(project.id)}
+                                                disabled={editLoading}
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
                                             <Button
                                                 variant="ghost"
                                                 size="sm"

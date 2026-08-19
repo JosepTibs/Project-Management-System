@@ -9,17 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useState, useMemo, useCallback } from 'react';
-import {
-    useReactTable,
-    getCoreRowModel,
-    getFilteredRowModel,
-    getSortedRowModel,
-    getPaginationRowModel,
-    createColumnHelper,
-    type SortingState,
-    type FilterFn,
-} from '@tanstack/react-table';
-
+import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, createColumnHelper, type SortingState, type FilterFn} from '@tanstack/react-table';
+import CreateUserSheet from '@/components/users/create-user-sheet';
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Users',
@@ -90,6 +81,7 @@ export default function UsersIndex() {
     const [globalFilter, setGlobalFilter] = useState(filters.search ?? '');
     const [roleFilter, setRoleFilter] = useState(filters.role ?? '');
     const [sorting, setSorting] = useState<SortingState>([]);
+    const [createOpen, setCreateOpen] = useState(false);
 
     // Apply role filter to data
     const filteredData = useMemo(() => {
@@ -289,15 +281,16 @@ export default function UsersIndex() {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Users" />
+            <CreateUserSheet open={createOpen} onOpenChange={setCreateOpen} roles={roles} />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold">Users</h1>
-                    <Link href="/users/create">
-                        <Button>
+                    
+                        <Button onClick={() => setCreateOpen(true)}>
                             <Plus className="mr-2 h-4 w-4" />
                             Add User
                         </Button>
-                    </Link>
+                    
                 </div>
 
                 {/* Filters */}

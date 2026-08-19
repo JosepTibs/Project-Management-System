@@ -27,7 +27,7 @@ class GanttController extends Controller
     'milestones',
     'workItems.status',
     'workItems.assignee',
-    'workItems.subtasks',   
+       
     ]);
 
         return Inertia::render('projects/gantt', [
@@ -46,13 +46,7 @@ class GanttController extends Controller
                 'priority' => $item->priority,
                 'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
                 'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
-                'subtasks' => $item->subtasks->map( fn($sub)=> [
-                    'id' => $sub->id,
-                    'title' => $sub->title,
-                    'description' => $sub->description,
-                    'due_date' => $sub->due_date?->format('Y-m-d'),
-                    'completed_at' => $sub->completed_at?->format('Y-m-d'),
-                ]),
+                
             ]),
             'milestones' => $project->milestones->map(fn ($m) => [
                 'id' => $m->id,
@@ -78,13 +72,7 @@ class GanttController extends Controller
                     'due_date' => $item->due_date?->format('Y-m-d'),
                     'progress' => $item->progress ?? 0,
                     'priority' => $item->priority,
-                    'subtasks' => $item->subtasks->map(fn ($sub) => [
-                        'id' => $sub->id,
-                        'title' => $sub->title,
-                        'description' => $sub->description,
-                        'due_date' => $sub->due_date?->format('Y-m-d'),
-                        'completed_at' => $sub->completed_at?->format('Y-m-d'),
-                    ]),
+                    
                 ]),
             ]),
         ]);

@@ -95,11 +95,6 @@ class work_item extends Model
         return $this->morphMany(file_attachment::class, 'attachable');
     }
 
-    public function subtasks(): HasMany
-    {
-    return $this->hasMany(subtasks::class,'work_item_id');
-    }
-
     public function predecessors(): BelongsToMany
     {
         return $this->belongsToMany(work_item::class, 'dependencies', 'successor_id', 'predecessor_id')->withPivot(['type', 'lag'])->withTimestamps();
@@ -121,6 +116,11 @@ class work_item extends Model
     public function tags(): BelongsToMany
     {
         return $this->belongsToMany(tags::class, 'work_item_tags', 'work_item_id', 'tag_id')->withTimestamps();
+    }
+
+    public function collaborators(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'work_item_collaborators', 'work_item_id', 'user_id')->withTimestamps();
     }
 }
 

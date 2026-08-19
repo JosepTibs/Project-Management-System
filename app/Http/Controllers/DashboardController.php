@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\activity_logs;
 use App\Models\LoginActivity;
+use App\Models\milestones;
 use App\Models\project_members;
 use App\Models\projects;
 use App\Models\User;
 use App\Models\work_item;
 use App\Models\work_item_statuses;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
@@ -22,12 +24,67 @@ class DashboardController extends Controller
         $totalUsers = User::count();
         $totalProjects = projects::count();
         $totalWorkItems = work_item::count();
-        $overdueWorkItems = work_item::where('due_date', '<', now())->count();
+        $overdueWorkItems = work_item::where('due_date', '<', now())
+            ->where('progress', '<', 100)
+            ->count();
 
-        // Work items by priority
+        // Work items by priority (schema enum includes 'critical')
         $highPriority = work_item::where('priority', 'high')->count();
         $mediumPriority = work_item::where('priority', 'medium')->count();
         $lowPriority = work_item::where('priority', 'low')->count();
+        $criticalPriority = work_item::where('priority', 'critical')->count();
+
+        // Derived work-item health metrics
+        $avgCompletion = (int) round(work_item::avg('progress') ?? 0);
+        $completedWorkItems = work_item::where('progress', 100)->count();
+        $unassignedWorkItems = work_item::whereNull('assignee_id')->count();
+        $dueThisWeek = work_item::whereNotNull('due_date')
+            ->where('due_date', '>=', now()->startOfDay())
+            ->where('due_date', '<=', now()->endOfDay()->addDays(7))
+            ->where('progress', '<', 100)
+            ->count();
+
+        // Users created within the last 7 days (replaces the hardcoded subtitle)
+        $newUsersWeek = User::where('created_at', '>=', now()->subWeek())->count();
+
+        // Work items blocked by an unfinished predecessor
+        $blockedWorkItems = DB::table('dependencies')
+            ->join('work_items as pred', 'pred.id', '=', 'dependencies.predecessor_id')
+            ->where('pred.progress', '<', 100)
+            ->distinct()
+            ->count('dependencies.successor_id');
+
+        // Workload: number of assigned work items per user (top contributors)
+        $tasksPerUser = work_item::selectRaw('assignee_id, count(*) as total')
+            ->whereNotNull('assignee_id')
+            ->groupBy('assignee_id')
+            ->orderByDesc('total')
+            ->with('assignee:id,fname,mname,lname,sname,username')
+            ->get()
+            ->map(function ($item) {
+                $user = $item->assignee;
+                $nameParts = array_filter([$user?->fname, $user?->mname, $user?->lname, $user?->sname]);
+                $userName = $nameParts ? implode(' ', $nameParts) : ($user?->username ?? 'Unassigned');
+
+                return [
+                    'user_name' => $userName,
+                    'total' => $item->total,
+                ];
+            })
+            ->take(5)
+            ->values();
+
+        // Milestone health
+        $totalMilestones = milestones::count();
+        $completedMilestones = milestones::whereNotNull('completed_at')->count();
+        $overdueMilestones = milestones::whereNull('completed_at')
+            ->whereNotNull('target_date')
+            ->where('target_date', '<', now()->startOfDay())
+            ->count();
+        $upcomingMilestones = milestones::whereNull('completed_at')
+            ->whereNotNull('target_date')
+            ->where('target_date', '>=', now()->startOfDay())
+            ->count();
 
         // Work items by status
         $statuses = work_item_statuses::withCount('workItems')->get()->groupBy('name')->map(function ($group) {
@@ -68,7 +125,7 @@ class DashboardController extends Controller
                     'description' => $project->description,
                     'members_count' => $project->members_count,
                     'work_items_count' => $project->work_items_count,
-                    'completion_percentage' => $project->completion_percentage ?? 0,
+                    'completion_percentage' => (int) round((float) ($project->completion_percentage ?? 0)),
                 ];
             });
 
@@ -160,12 +217,26 @@ class DashboardController extends Controller
                 'high_priority' => $highPriority,
                 'medium_priority' => $mediumPriority,
                 'low_priority' => $lowPriority,
+                'critical_priority' => $criticalPriority,
+                'avg_completion' => $avgCompletion,
+                'completed_work_items' => $completedWorkItems,
+                'unassigned_work_items' => $unassignedWorkItems,
+                'due_this_week' => $dueThisWeek,
+                'new_users_week' => $newUsersWeek,
+                'blocked_work_items' => $blockedWorkItems,
             ],
             'statuses' => $statuses,
             'recent_work_items' => $recentWorkItems,
             'projects_overview' => $projectsOverview,
             'team_distribution' => $teamDistribution,
             'recent_activities' => $recentActivities,
+            'tasks_per_user' => $tasksPerUser,
+            'milestones_overview' => [
+                'total' => $totalMilestones,
+                'completed' => $completedMilestones,
+                'overdue' => $overdueMilestones,
+                'upcoming' => $upcomingMilestones,
+            ],
         ]);
     }
 }

@@ -1,7 +1,6 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Plus, Search } from 'lucide-react';
@@ -9,6 +8,12 @@ import { useState, useMemo, useEffect } from 'react';
 import { ViewToggle } from '@/components/tables/view-toggle';
 import { ProjectsCardView } from '@/components/tables/projects-card-view';
 import { ProjectsTableView } from '@/components/tables/projects-table-view';
+import ProjectSetupSheet, {
+    type StatusOption,
+    type UserOption,
+    type WorkItemStatusOption,
+    type NestedMilestone,
+} from '@/components/projects/project-setup-sheet';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -17,7 +22,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-interface ProjectItem {
+export interface ProjectItem {
     id: number;
     name: string;
     description: string;
@@ -31,22 +36,56 @@ interface ProjectItem {
 
 interface ProjectsPageProps extends Record<string, unknown> {
     projects: ProjectItem[];
+    statuses: StatusOption[];
+    allUsers: UserOption[];
+    workItemStatuses: WorkItemStatusOption[];
+    auth?: {
+        user?: {
+            id: number;
+            name: string;
+            email: string;
+        } | null;
+        roles?: string[];
+    };
+
 }
 
 export default function ProjectsIndex() {
-    const { projects } = usePage<ProjectsPageProps>().props;
+    const { projects, statuses, allUsers, workItemStatuses, auth } = usePage<ProjectsPageProps>().props;
     const [search, setSearch] = useState('');
-    const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
+    const [viewMode, setViewMode] = useState<'table' | 'cards' | 'grouped'>('table');
+    const [createOpen, setCreateOpen] = useState(false);
+    const [editOpen, setEditOpen] = useState(false);
+    const [editingProject, setEditingProject] = useState<{
+        project: {
+            id: number;
+            name: string;
+            description: string;
+            item_prefix: string;
+            start_date: string | null;
+            end_date: string | null;
+            status_name: string | null;
+        };
+        statuses: StatusOption[];
+        allUsers: UserOption[];
+        workItemStatuses: WorkItemStatusOption[];
+        memberIds: number[];
+        milestones: NestedMilestone[];
+    } | null>(null);
+    const [editLoading, setEditLoading] = useState(false);
+    // Check if user has admin or manager role (only they may add projects)
+    const userRoles = auth?.roles || [];
+    const canManageProjects = userRoles.includes('admin') || userRoles.includes('manager');
 
     // Persist view preference
     useEffect(() => {
         const saved = localStorage.getItem('projects-view-mode');
-        if (saved === 'table' || saved === 'cards') {
-            setViewMode(saved);
+        if (saved === 'table' || saved === 'cards' || saved === 'grouped') {
+            setViewMode(saved as 'table' | 'cards' | 'grouped');
         }
     }, []);
 
-    const toggleView = (mode: 'table' | 'cards') => {
+    const toggleView = (mode: 'table' | 'cards' | 'grouped') => {
         setViewMode(mode);
         localStorage.setItem('projects-view-mode', mode);
     };
@@ -67,6 +106,23 @@ export default function ProjectsIndex() {
         }
     }
 
+    async function handleEditClick(projectId: number) {
+        setEditLoading(true);
+        try {
+            const res = await fetch(`/projects/${projectId}/setup-data`, {
+                headers: { Accept: 'application/json' },
+            });
+            if (!res.ok) throw new Error('Failed to load project setup data');
+            const data = await res.json();
+            setEditingProject(data);
+            setEditOpen(true);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setEditLoading(false);
+        }
+    }
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Projects" />
@@ -75,12 +131,12 @@ export default function ProjectsIndex() {
                     <h1 className="text-2xl font-bold">Projects</h1>
                     <div className="flex items-center gap-2">
                         <ViewToggle viewMode={viewMode} onViewChange={toggleView} />
-                        <Link href="/projects/create">
-                            <Button>
+                        {canManageProjects && (
+                            <Button onClick={() => setCreateOpen(true)}>
                                 <Plus className="mr-2 h-4 w-4" />
                                 Add Project
                             </Button>
-                        </Link>
+                        )}
                     </div>
                 </div>
 
@@ -97,11 +153,38 @@ export default function ProjectsIndex() {
 
                 {/* View Content */}
                 {viewMode === 'table' ? (
-                    <ProjectsTableView projects={filteredProjects} onDelete={handleDelete} />
+                    <ProjectsTableView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} />
                 ) : (
-                    <ProjectsCardView projects={filteredProjects} onDelete={handleDelete} />
+                    <ProjectsCardView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} />
                 )}
             </div>
+
+            {editingProject && (
+                <ProjectSetupSheet
+                    open={editOpen}
+                    onOpenChange={setEditOpen}
+                    mode="edit"
+                    projectId={editingProject.project.id}
+                    project={editingProject.project}
+                    statusName={editingProject.project.status_name ?? ''}
+                    statuses={editingProject.statuses}
+                    allUsers={editingProject.allUsers}
+                    workItemStatuses={editingProject.workItemStatuses}
+                    initialMemberIds={editingProject.memberIds}
+                    initialMilestones={editingProject.milestones}
+                />
+            )}
+
+            <ProjectSetupSheet
+                open={createOpen}
+                onOpenChange={setCreateOpen}
+                mode="create"
+                project={{ name: '', description: '', item_prefix: '', start_date: null, end_date: null }}
+                statusName="Active"
+                statuses={statuses}
+                allUsers={allUsers}
+                workItemStatuses={workItemStatuses}
+            />
         </AppLayout>
     );
 }

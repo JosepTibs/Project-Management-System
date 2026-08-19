@@ -78,6 +78,8 @@ users ──┬── project_members ──── projects
 | description | text, nullable | |
 | created_by | bigint, FK → users | Project creator |
 | item_prefix | string, nullable | Prefix for work item IDs |
+| start_date | date, nullable | Project start date |
+| end_date | date, nullable | Project end date |
 | created_at | timestamp | |
 | updated_at | timestamp | |
 

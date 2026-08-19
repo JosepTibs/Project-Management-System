@@ -1,15 +1,17 @@
 import { Link } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Pencil, Trash2, Plus } from 'lucide-react';
+import { Eye, Pencil, Trash2 } from 'lucide-react';
 import type { ProjectItem } from '@/pages/projects/index';
 
 interface ProjectsCardViewProps {
     projects: ProjectItem[];
     onDelete: (projectId: number, projectName: string) => void;
+    onEdit?: (projectId: number) => void;
+    editLoading?: boolean;
 }
 
-export function ProjectsCardView({ projects, onDelete }: ProjectsCardViewProps) {
+export function ProjectsCardView({ projects, onDelete, onEdit, editLoading }: ProjectsCardViewProps) {
     return (
         <>
             {projects.length > 0 ? (
@@ -69,11 +71,15 @@ export function ProjectsCardView({ projects, onDelete }: ProjectsCardViewProps) 
                                             <Eye className="h-4 w-4" />
                                         </Button>
                                     </Link>
-                                    <Link href={`/projects/${project.id}/edit`}>
-                                        <Button variant="outline" size="sm" title="Edit">
-                                            <Pencil className="h-4 w-4" />
-                                        </Button>
-                                    </Link>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        title="Edit"
+                                        onClick={() => onEdit?.(project.id)}
+                                        disabled={editLoading}
+                                    >
+                                        <Pencil className="h-4 w-4" />
+                                    </Button>
                                     <Button
                                         variant="outline"
                                         size="sm"

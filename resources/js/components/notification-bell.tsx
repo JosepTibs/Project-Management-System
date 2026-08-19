@@ -3,6 +3,7 @@ import { Link, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api';
 import { useEchoNotification } from '@laravel/echo-react';
 
 interface NotificationData {
@@ -55,7 +56,7 @@ export function NotificationBell() {
 
     async function fetchRecent() {
         try {
-            const res = await fetch('/api/notifications/recent');
+            const res = await apiFetch('/api/notifications/recent');
             const data = await res.json();
             setNotifications(data.notifications);
         } catch (e) {
@@ -65,7 +66,7 @@ export function NotificationBell() {
 
     async function fetchUnreadCount() {
         try {
-            const res = await fetch('/api/notifications/unread-count');
+            const res = await apiFetch('/api/notifications/unread-count');
             const data = await res.json();
             setUnreadCount(data.count);
         } catch (e) {
@@ -83,7 +84,7 @@ export function NotificationBell() {
 
     async function markAsRead(id: string) {
         try {
-            await fetch(`/api/notifications/${id}/read`, { method: 'POST', headers: csrfHeader() });
+            await apiFetch(`/api/notifications/${id}/read`, { method: 'POST', headers: csrfHeader() });
             setNotifications(prev =>
                 prev.map(n => n.id === id ? { ...n, is_unread: false, read_at: new Date().toISOString() } : n)
             );
@@ -95,7 +96,7 @@ export function NotificationBell() {
 
     async function markAllAsRead() {
         try {
-            await fetch('/api/notifications/mark-all-read', { method: 'POST', headers: csrfHeader() });
+            await apiFetch('/api/notifications/mark-all-read', { method: 'POST', headers: csrfHeader() });
             setNotifications(prev => prev.map(n => ({ ...n, is_unread: false, read_at: new Date().toISOString() })));
             setUnreadCount(0);
         } catch (e) {

@@ -32,6 +32,7 @@ interface WorkItemData {
     group_id: number;
     assignee_id: number;
     priority: string;
+    start_date: string | null;
     due_date: string;
     progress: number;
 }
@@ -53,6 +54,7 @@ export default function EditWorkItem() {
     const [groupId, setGroupId] = useState(String(workItem.group_id));
     const [assigneeId, setAssigneeId] = useState(String(workItem.assignee_id));
     const [priority, setPriority] = useState(workItem.priority);
+    const [startDate, setStartDate] = useState(workItem.start_date ?? '');
     const [progress, setProgress] = useState(String(workItem.progress));
     const [dueDate, setDueDate] = useState(workItem.due_date);
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -77,6 +79,7 @@ export default function EditWorkItem() {
             assignee_id: assigneeId,
             priority,
             progress: Number(progress),
+            start_date: startDate || null,
             due_date: dueDate,
         }, {
             onError: (errs) => {

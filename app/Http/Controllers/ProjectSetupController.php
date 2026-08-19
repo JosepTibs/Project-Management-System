@@ -7,16 +7,19 @@ use App\Models\project_members;
 use App\Models\projects;
 use App\Models\User;
 use App\Models\work_item;
+use App\Models\work_item_groups;
 use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Inertia\Inertia;
+use Illuminate\Support\Carbon;
+
 
 class ProjectSetupController extends Controller
 {
     public function show(projects $project)
     {
-        $project->load(['members.user', 'workItemGroups.milestone', 'workItemGroups' => fn ($q) => $q->orderBy('id', 'desc'), 'milestones' => fn ($q) => $q->orderBy('id', 'desc'), 'workItems' => fn ($q) => $q->orderBy('id', 'desc')]);
+        $project->load(['members.user', 'statuses', 'milestones.work_item_groups.workItems']);
 
         $allUsers = User::with('roles')
             ->select('id', 'username', 'email', 'fname', 'lname')
@@ -30,48 +33,47 @@ class ProjectSetupController extends Controller
                 'name' => $project->name,
                 'description' => $project->description,
                 'item_prefix' => $project->item_prefix,
+                'start_date' => $project->start_date?->format('Y-m-d'),
+                'end_date' => $project->end_date?->format('Y-m-d'),
+                'status_name' => $project->status?->name,
             ],
+            'statuses' => $project->statuses->sortBy('order')->values()->map(fn ($s) => [
+                'name' => $s->name,
+                'color' => $s->color,
+            ]),
             'allUsers' => $allUsers->map(fn ($u) => [
                 'id' => $u->id,
                 'username' => $u->username,
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? 'No Role',
             ]),
-            'members' => $project->members->map(fn ($m) => [
-                'id' => $m->id,
-                'user_id' => $m->user_id,
-                'user_name' => $m->user?->username,
-                'user_email' => $m->user?->email,
+            'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
+                'id' => $s->id,
+                'name' => $s->name,
             ]),
-            'workItemGroups' => $project->workItemGroups->map(fn ($g) => [
-                'id' => $g->id,
-                'name' => $g->name,
-                'description' => $g->description,
-                'start_date' => $g->start_date?->format('Y-m-d'),
-                'end_date' => $g->end_date?->format('Y-m-d'),
-                'milestone_id' => $g->milestone_id,
-            ]),
-            'milestones' => $project->milestones->map(fn ($m) => [
+            'memberIds' => $project->members->pluck('user_id')->values(),
+            'milestones' => $project->milestones->sortBy('order')->values()->map(fn ($m) => [
                 'id' => $m->id,
                 'name' => $m->name,
                 'description' => $m->description,
                 'start_date' => $m->start_date?->format('Y-m-d'),
                 'target_date' => $m->target_date?->format('Y-m-d'),
-                'order' => $m->order,
-            ]),
-            'statuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
-                'id' => $s->id,
-                'name' => $s->name,
-            ]),
-            'workItems' => $project->workItems->map(fn ($w) => [
-                'id' => $w->id,
-                'title' => $w->title,
-                'description' => $w->description,
-                'priority' => $w->priority,
-                'due_date' => $w->due_date?->format('Y-m-d'),
-                'assignee_id' => $w->assignee_id,
-                'group_id' => $w->group_id,
-                'status_id' => $w->status_id,
+                'groups' => $m->work_item_groups->map(fn ($g) => [
+                    'id' => $g->id,
+                    'name' => $g->name,
+                    'description' => $g->description,
+                    'start_date' => $g->start_date?->format('Y-m-d'),
+                    'end_date' => $g->end_date?->format('Y-m-d'),
+                    'work_items' => $g->workItems->map(fn ($w) => [
+                        'id' => $w->id,
+                        'title' => $w->title,
+                        'description' => $w->description,
+                        'priority' => $w->priority,
+                        'due_date' => $w->due_date?->format('Y-m-d'),
+                        'assignee_id' => $w->assignee_id,
+                        'status_id' => $w->status_id,
+                    ])->values(),
+                ])->values(),
             ]),
         ]);
     }
@@ -117,109 +119,240 @@ class ProjectSetupController extends Controller
         ]);
     }
 
+    public function apiShow(projects $project)
+    {
+        $project->load(['members.user', 'statuses', 'milestones.work_item_groups.workItems']);
+
+        $allUsers = User::with('roles')
+            ->select('id', 'username', 'email', 'fname', 'lname')
+            ->get()
+            ->sortBy(fn ($u) => $u->roles->first()?->name ?? 'zzz')
+            ->values();
+
+        return response()->json([
+            'project' => [
+                'id' => $project->id,
+                'name' => $project->name,
+                'description' => $project->description,
+                'item_prefix' => $project->item_prefix,
+                'start_date' => $project->start_date?->format('Y-m-d'),
+                'end_date' => $project->end_date?->format('Y-m-d'),
+                'status_name' => $project->status?->name,
+            ],
+            'statuses' => $project->statuses->sortBy('order')->values()->map(fn ($s) => [
+                'name' => $s->name,
+                'color' => $s->color,
+            ]),
+            'allUsers' => $allUsers->map(fn ($u) => [
+                'id' => $u->id,
+                'username' => $u->username,
+                'email' => $u->email,
+                'role' => $u->roles->first()?->name ?? 'No Role',
+            ]),
+            'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
+                'id' => $s->id,
+                'name' => $s->name,
+            ]),
+            'memberIds' => $project->members->pluck('user_id')->values(),
+            'milestones' => $project->milestones->sortBy('order')->values()->map(fn ($m) => [
+                'id' => $m->id,
+                'name' => $m->name,
+                'description' => $m->description,
+                'start_date' => $m->start_date?->format('Y-m-d'),
+                'target_date' => $m->target_date?->format('Y-m-d'),
+                'groups' => $m->work_item_groups->map(fn ($g) => [
+                    'id' => $g->id,
+                    'name' => $g->name,
+                    'description' => $g->description,
+                    'start_date' => $g->start_date?->format('Y-m-d'),
+                    'end_date' => $g->end_date?->format('Y-m-d'),
+                    'work_items' => $g->workItems->map(fn ($w) => [
+                        'id' => $w->id,
+                        'title' => $w->title,
+                        'description' => $w->description,
+                        'priority' => $w->priority,
+                        'due_date' => $w->due_date?->format('Y-m-d'),
+                        'assignee_id' => $w->assignee_id,
+                        'status_id' => $w->status_id,
+                    ])->values(),
+                ])->values(),
+            ]),
+        ]);
+    }
+
     public function update(Request $request, projects $project)
     {
         $data = $request->validate([
+            // Project fields
+            'name' => 'sometimes|string|max:255',
+            'description' => 'nullable|string',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'status_name' => 'nullable|string',
             // Members
-            'user_ids' => 'nullable|array',
-            'user_ids.*' => 'exists:users,id',
-            // Groups
-            'groups' => 'nullable|array',
-            'groups.*.id' => 'nullable|integer',
-            'groups.*.name' => 'required_with:groups|string|max:255',
-            'groups.*.description' => 'nullable|string',
-            'groups.*.start_date' => 'nullable|date',
-            'groups.*.end_date' => 'nullable|date',
-            'groups.*.milestone_id' => 'nullable|integer|exists:milestones,id',
-            // Milestones
+            'member_ids' => 'nullable|array',
+            'member_ids.*' => 'exists:users,id',
+            // Milestones -> Groups -> Work items
             'milestones' => 'nullable|array',
-            'milestones.*.id' => 'nullable|integer|exists:milestones,id',
-            'milestones.*.name' => 'required_with:milestones|string|max:255',
+            'milestones.*.id' => 'nullable|integer',
+            'milestones.*.name' => 'nullable|string|max:255',
             'milestones.*.description' => 'nullable|string',
             'milestones.*.start_date' => 'nullable|date',
             'milestones.*.target_date' => 'nullable|date',
-            // Work Items
-            'work_items' => 'nullable|array',
-            'work_items.*.id' => 'nullable|integer|exists:work_items,id',
-            'work_items.*.title' => 'required_with:work_items|string|max:255',
-            'work_items.*.description' => 'nullable|string',
-            'work_items.*.priority' => 'required_with:work_items|in:low,medium,high,critical',
-            'work_items.*.due_date' => 'nullable|date',
-            'work_items.*.assignee_id' => 'nullable|exists:users,id',
-            'work_items.*.group_id' => 'nullable|integer',
-            'work_items.*.status_id' => 'nullable|exists:work_item_statuses,id',
+            'milestones.*.groups' => 'nullable|array',
+            'milestones.*.groups.*.id' => 'nullable|integer',
+            'milestones.*.groups.*.name' => 'nullable|string|max:255',
+            'milestones.*.groups.*.description' => 'nullable|string',
+            'milestones.*.groups.*.start_date' => 'nullable|date',
+            'milestones.*.groups.*.end_date' => 'nullable|date',
+            'milestones.*.groups.*.work_items' => 'nullable|array',
+            'milestones.*.groups.*.work_items.*.id' => 'nullable|integer',
+            'milestones.*.groups.*.work_items.*.title' => 'nullable|string|max:255',
+            'milestones.*.groups.*.work_items.*.description' => 'nullable|string',
+            'milestones.*.groups.*.work_items.*.priority' => 'nullable|in:low,medium,high,critical',
+            'milestones.*.groups.*.work_items.*.due_date' => 'nullable|date',
+            'milestones.*.groups.*.work_items.*.assignee_id' => 'nullable|exists:users,id',
+            'milestones.*.groups.*.work_items.*.status_id' => 'nullable|exists:work_item_statuses,id',
         ]);
 
+                //validation for date hierarchy
+        $projectStart = isset($data['start_date']) && $data['start_date'] ? Carbon::parse($data['start_date']) : Carbon::parse($project->start_date ?? now()->subMonth(6)->startOfMonth()->format('Y-m-d'));
+        $projectEnd   = isset($data['end_date']) && $data['end_date'] ? Carbon::parse($data['end_date']) : Carbon::parse($project->end_date   ?? now()->addMonth(6)->startOfMonth()->format('Y-m-d'));
+
+        if (isset($data['milestones'])) {
+            foreach ($data['milestones'] as $milestone) {
+                if (! empty($milestone['start_date'])) {
+                    $msStart = Carbon::parse($milestone['start_date']);
+                    if ($msStart->lt($projectStart) || $msStart->gt($projectEnd)) {
+                        return back()->withErrors(['milestones' => 'Milestone start date must be within project dates.']);
+                    }
+                }
+                if (! empty($milestone['target_date'])) {
+                    $msTarget = Carbon::parse($milestone['target_date']);
+                    if ($msTarget->lt($projectStart) || $msTarget->gt($projectEnd)) {
+                        return back()->withErrors(['milestones' => 'Milestone target date must be within project dates.']);
+                    }
+                }
+                // Groups under this milestone
+                if (isset($milestone['groups'])) {
+                    foreach ($milestone['groups'] as $group) {
+                        if (! empty($group['start_date'])) {
+                            $gStart = Carbon::parse($group['start_date']);
+                            if ($gStart->lt($msStart) || $gStart->gt($msTarget)) {
+                                return back()->withErrors(['groups' => "Group start date must be within milestone dates."]);
+                            }
+                        }
+                        if (! empty($group['end_date'])) {
+                            $gEnd = Carbon::parse($group['end_date']);
+                            if ($gEnd->lt($msStart) || $gEnd->gt($msTarget)) {
+                                return back()->withErrors(['groups' => "Group end date must be within milestone dates."]);
+                            }
+                        }
+                        // Work items under this group
+                        if (isset($group['work_items'])) {
+                            foreach ($group['work_items'] as $item) {
+                                if (! empty($item['start_date'])) {
+                                    $iStart = Carbon::parse($item['start_date']);
+                                    if ($iStart->lt($gStart) || $iStart->gt($gEnd)) {
+                                        return back()->withErrors(['work_items' => "Item start date must be within group dates."]);
+                                    }
+                                }
+                                if (! empty($item['due_date'])) {
+                                    $iDue = Carbon::parse($item['due_date']);
+                                    if ($iDue->lt($gStart) || $iDue->gt($gEnd)) {
+                                        return back()->withErrors(['work_items' => "Item due date must be within group dates."]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update project fields
+        $projectData = Arr::only($data, ['name', 'description','item_prefix', 'start_date', 'end_date']);
+        if (!empty($projectData)) {
+            $project->update($projectData);
+        }
+
+        // Update project lifecycle status
+        if (! empty($data['status_name'])) {
+            $status = $project->statuses()->where('name', $data['status_name'])->first();
+            if ($status && $project->status_id !== $status->id) {
+                $project->update(['status_id' => $status->id]);
+            }
+        }
+
         // Save members
-        if (isset($data['user_ids'])) {
-            $project->members()->whereNotIn('user_id', $data['user_ids'])->get()->each->delete();
+        if (isset($data['member_ids'])) {
+            $project->members()->whereNotIn('user_id', $data['member_ids'])->get()->each->delete();
             $existingIds = $project->members()->pluck('user_id')->toArray();
-            foreach ($data['user_ids'] as $userId) {
+            foreach ($data['member_ids'] as $userId) {
                 if (! in_array($userId, $existingIds)) {
                     project_members::create(['project_id' => $project->id, 'user_id' => $userId]);
                 }
             }
         }
 
-        // Save groups — update existing, create new, delete removed
-        if (isset($data['groups'])) {
-            $submittedGroupIds = collect($data['groups'])->pluck('id')->filter(function ($id) {
-                return $id > 0;
-            })->toArray();
-            $project->workItemGroups()->whereNotIn('id', $submittedGroupIds)->delete();
-
-            $tempIdMap = [];
-
-            foreach ($data['groups'] as $group) {
-                $groupData = Arr::only($group, ['name', 'description', 'start_date', 'end_date', 'milestone_id']);
-                if (isset($group['id']) && $group['id'] > 0) {
-                    $project->workItemGroups()->where('id', $group['id'])->update($groupData);
-                } else {
-                    $groupData['project_id'] = $project->id;
-                    $newGroup = $project->workItemGroups()->create($groupData);
-                    if (isset($group['id']) && $group['id'] < 0) {
-                        $tempIdMap[$group['id']] = $newGroup->id;
-                    }
-                }
-            }
-        }
-
-        // Save milestones — update existing, create new, delete removed
+        // Save nested milestones -> groups -> work items
         if (isset($data['milestones'])) {
-            $submittedMilestoneIds = collect($data['milestones'])->pluck('id')->filter()->toArray();
+            $submittedMilestoneIds = collect($data['milestones'])->pluck('id')->filter(fn ($id) => $id > 0)->toArray();
             $project->milestones()->whereNotIn('id', $submittedMilestoneIds)->delete();
 
             foreach ($data['milestones'] as $i => $milestone) {
+                if (empty($milestone['name'])) {
+                    continue;
+                }
                 $milestoneData = array_merge(
                     Arr::only($milestone, ['name', 'description', 'start_date', 'target_date']),
-                    ['order' => $i + 1]
+                    ['order' => $i + 1],
                 );
-                if (isset($milestone['id'])) {
-                    $project->milestones()->where('id', $milestone['id'])->update($milestoneData);
-                } else {
-                    $milestoneData['project_id'] = $project->id;
-                    $project->milestones()->create($milestoneData);
+                $milestoneModel = isset($milestone['id']) && $milestone['id'] > 0
+                    ? $project->milestones()->findOrFail($milestone['id'])
+                    : $project->milestones()->create($milestoneData + ['project_id' => $project->id]);
+                if (isset($milestone['id']) && $milestone['id'] > 0) {
+                    $milestoneModel->update($milestoneData);
                 }
-            }
-        }
 
-        // Save work items — update existing, create new, delete removed
-        if (isset($data['work_items'])) {
-            $submittedWorkItemIds = collect($data['work_items'])->pluck('id')->filter()->toArray();
-            $project->workItems()->whereNotIn('id', $submittedWorkItemIds)->delete();
+                // Groups under this milestone
+                $submittedGroupIds = collect($milestone['groups'] ?? [])->pluck('id')
+                    ->filter(fn ($id) => $id > 0)->toArray();
+                $milestoneModel->work_item_groups()->whereNotIn('id', $submittedGroupIds)->delete();
 
-            foreach ($data['work_items'] as $item) {
-                $itemData = Arr::only($item, ['title', 'description', 'priority', 'due_date', 'assignee_id', 'group_id', 'status_id']);
+                foreach ($milestone['groups'] ?? [] as $group) {
+                    if (empty($group['name'])) {
+                        continue;
+                    }
+                    $groupData = array_merge(
+                        Arr::only($group, ['name', 'description', 'start_date', 'end_date']),
+                        ['milestone_id' => $milestoneModel->id],
+                    );
+                    $groupModel = isset($group['id']) && $group['id'] > 0
+                        ? work_item_groups::findOrFail($group['id'])
+                        : $milestoneModel->work_item_groups()->create($groupData + ['project_id' => $project->id]);
+                    if (isset($group['id']) && $group['id'] > 0) {
+                        $groupModel->update($groupData);
+                    }
 
-                // Map temp group_id to real ID
-                if (isset($itemData['group_id']) && $itemData['group_id'] < 0 && isset($tempIdMap[$itemData['group_id']])) {
-                    $itemData['group_id'] = $tempIdMap[$itemData['group_id']];
-                }
-                if (isset($item['id'])) {
-                    $project->workItems()->where('id', $item['id'])->update($itemData);
-                } else {
-                    $itemData['project_id'] = $project->id;
-                    work_item::create($itemData);
+                    // Work items under this group
+                    $submittedItemIds = collect($group['work_items'] ?? [])->pluck('id')
+                        ->filter(fn ($id) => $id > 0)->toArray();
+                    $groupModel->workItems()->whereNotIn('id', $submittedItemIds)->delete();
+
+                    foreach ($group['work_items'] ?? [] as $item) {
+                        if (empty($item['title'])) {
+                            continue;
+                        }
+                        $itemData = Arr::only($item, [
+                            'title', 'description', 'priority', 'start_date','due_date', 'assignee_id', 'status_id',
+                        ]) + ['group_id' => $groupModel->id];
+                        if (isset($item['id']) && $item['id'] > 0) {
+                            work_item::findOrFail($item['id'])->update($itemData);
+                        } else {
+                            work_item::create($itemData + ['project_id' => $project->id]);
+                        }
+                    }
                 }
             }
         }

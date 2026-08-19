@@ -25,7 +25,7 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('users', UserController::class);
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
 
-    Route::resource('projects', ProjectsController::class);
+    Route::resource('projects', ProjectsController::class)->except(['create']);
     Route::resource('projects.work-items', WorkItemController::class);
     Route::get('projects/{project}/kanban', [ProjectsController::class, 'kanban'])->name('projects.kanban');
     Route::get('projects/{project}/gantt', [GanttController::class, 'index'])->name('projects.gantt');
@@ -51,6 +51,7 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('projects/{project}/groups', [ProjectSetupController::class, 'groupsIndex'])->name('projects.groups.index');
     Route::get('projects/{project}/setup', [ProjectSetupController::class, 'show'])->name('projects.setup.show');
+    Route::get('projects/{project}/setup-data', [ProjectSetupController::class, 'apiShow'])->name('projects.setup.api');
     Route::put('projects/{project}/setup', [ProjectSetupController::class, 'update'])->name('projects.setup.update');
     Route::get('work-items/{workItem}/comments', [CommentsController::class, 'index'])->name('work-items.comments.index');
     Route::post('work-items/{workItem}/comments', [CommentsController::class, 'store'])->name('work-items.comments.store');

@@ -2,9 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use Closure;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Symfony\Component\HttpFoundation\Response;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -16,6 +18,24 @@ class HandleInertiaRequests extends Middleware
      * @var string
      */
     protected $rootView = 'app';
+
+    /**
+     * Handle the incoming request.
+     *
+     * Requests to JSON API endpoints (e.g. `/api/notifications/...`) should
+     * never be treated as Inertia requests, even if a client happens to send
+     * an `X-Inertia` header. Bypass Inertia handling for these paths so they
+     * always behave as plain JSON endpoints and never trip the
+     * "Inertia requests must receive a valid Inertia response" error.
+     */
+    public function handle(Request $request, Closure $next): Response
+    {
+        if (str_starts_with($request->path(), 'api/')) {
+            return $next($request);
+        }
+
+        return parent::handle($request, $next);
+    }
 
     /**
      * Determines the current asset version.
@@ -44,6 +64,9 @@ class HandleInertiaRequests extends Middleware
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
                 'user' => $request->user(),
+                'roles' => $request->user()?->roles->pluck('name')
+                    ->map(fn ($role) => strtolower($role))
+                    ->toArray() ?? [],
             ],
         ]);
     }

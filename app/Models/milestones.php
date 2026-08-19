@@ -53,7 +53,7 @@ class milestones extends Model
      */
     public function work_item_groups()
     {
-        return $this->hasMany(work_item_groups::class);
+        return $this->hasMany(work_item_groups::class, 'milestone_id');
     }
 
     /**

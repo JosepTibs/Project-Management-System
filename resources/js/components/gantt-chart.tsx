@@ -291,7 +291,7 @@ export function GanttChart({ milestones, workItemGroups }: GanttChartProps) {
     }
 
     return (
-        <div className="w-full max-w-full min-w-0 max-h-[500px] rounded-lg border bg-background overflow-x-auto overflow-y-auto">
+        <div className="w-full max-w-full min-w-0 max-h-[750px] rounded-lg border bg-background overflow-x-auto overflow-y-auto">
             <TooltipProvider delayDuration={300}>
                 <div
                     className="grid"

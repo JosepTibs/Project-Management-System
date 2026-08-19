@@ -1,385 +1,310 @@
 import { Head, Link, usePage } from '@inertiajs/react';
+import { useState } from 'react';
+import { type NestedMilestone, type StatusOption, type UserOption, type WorkItemStatusOption } from '@/components/projects/project-setup-sheet';
+import ProjectSetupSheet from '@/components/projects/project-setup-sheet';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { ArrowLeft, Users, FileText, Edit, Target, ChevronDown, BarChart3, Columns3 } from 'lucide-react';
-import { GanttChart } from '@/components/gantt-chart';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { ArrowLeft, Users, FileText, Settings, Target, ChevronDown, BarChart3, Columns3, Calendar } from 'lucide-react';
+import KanbanBoard from '@/components/kanban/kanban-board';
+import InteractiveGanttChart from '@/components/interactive-gantt-chart';
+import CalendarView from '@/components/calendar-view';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
-interface Member {
-    id: number;
-    user_id: number;
-    user_name: string;
-    user_email: string;
-}
-
-interface WorkItem {
-    id: number;
-    title: string;
-    priority: string;
-    due_date: string;
-    group_id: number | null;
-}
-
-interface Milestone {
-    id: number;
-    name: string;
-    description: string;
-    start_date: string;
-    target_date: string;
-    completed_at: string | null;
-    completion_percentage: number;
-    order: number;
-}
-
-interface WorkItemGroup {
-    id: number;
-    name: string;
-    description: string;
-    start_date: string;
-    end_date: string;
-    milestone_id: number | null;
-    completion_percentage: number;
-    work_items: WorkItem[];
-}
-
-interface ProjectData {
-    id: number;
-    name: string;
-    description: string;
-    item_prefix: string;
-    created_by: number;
-    creator_name: string;
-    completion_percentage: number;
-    members: Member[];
-    work_items: WorkItem[];
-    milestones: Milestone[];
-    work_item_groups: WorkItemGroup[];
-}
-
-interface ShowProjectPageProps extends Record<string, unknown> {
-    project: ProjectData;
-}
-
 function getPriorityVariant(priority: string) {
-    switch (priority) {
-        case 'critical': return 'destructive' as const;
-        case 'high': return 'default' as const;
-        case 'medium': return 'secondary' as const;
-        case 'low': return 'outline' as const;
-        default: return 'outline' as const;
-    }
+  switch (priority) {
+    case 'critical': return 'destructive' as const;
+    case 'high': return 'default' as const;
+    case 'medium': return 'secondary' as const;
+    default: return 'outline' as const;
+  }
 }
 
 export default function ShowProject() {
-    const { project } = usePage<ShowProjectPageProps>().props;
+  const { project, setup, columns, statuses, workItems } = usePage<any>().props;
+  const [editOpen, setEditOpen] = useState(false);
 
-    const breadcrumbs: BreadcrumbItem[] = [
-        { title: 'Projects', href: '/projects' },
-        { title: project.name, href: `/projects/${project.id}` },
-    ];
+  const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Projects', href: '/projects' },
+    { title: project.name, href: `/projects/${project.id}` },
+  ];
 
-    return (
-        <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title={project.name} />
-            <div className="flex h-full min-w-0 flex-1 flex-col gap-4 rounded-xl p-4">
-                <div className="flex items-center gap-4">
-                    <Button  variant="outline"  size="sm" onClick={() => window.history.back()} >
-                         <ArrowLeft className="mr-2 h-4 w-4" />
-                         Back
-                     </Button>
-                    <h1 className="text-2xl font-bold">{project.name}</h1>
-                    <div className="ml-auto flex items-center gap-2">
-                        <Link href={`/projects/${project.id}/setup`}>
-                            <Button variant="default" size="sm">
-                                <Users className="mr-2 h-4 w-4" />
-                                Setup
-                            </Button>
-                        </Link>
-                        <Link href={`/projects/${project.id}/edit`}>
-                            <Button variant="outline" size="sm">
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                            </Button>
-                        </Link>
-                    </div>
-                </div>
+  const totalItems = project.work_items.length;
+  const progressPercent = Math.min(100, Math.round(project.completion_percentage || 0));
 
-                {/* Project Info */}
-                <Card className="min-w-0">
-                    <CardHeader>
-                        <CardTitle className="text-lg">Project Details</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <div>
-                                <dt className="text-sm text-muted-foreground">Name</dt>
-                                <dd className="font-medium">{project.name}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-muted-foreground">Created By</dt>
-                                <dd className="font-medium">{project.creator_name || 'Unknown'}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-muted-foreground">Item Prefix</dt>
-                                <dd className="font-mono text-sm">{project.item_prefix}</dd>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <dt className="text-sm text-muted-foreground">Description</dt>
-                                <dd className="text-muted-foreground">{project.description || '—'}</dd>
-                            </div>
-                            <div>
-                                <dt className="text-sm text-muted-foreground mb-2">Completion</dt>
-                                <dd>
-                                    <div className="flex items-center justify-between text-sm mb-1">
-                                        <span className="text-muted-foreground">Progress</span>
-                                        <span className="font-medium">{Math.round(Math.min(100, project.completion_percentage))}%</span>
-                                    </div>
-                                    <div className="w-1/3 min-w-[160px] bg-secondary rounded-full h-2 overflow-hidden">
-                                        <div
-                                            className="bg-primary rounded-full h-2 transition-all"
-                                            style={{ width: `${Math.min(100, project.completion_percentage)}%` }}
-                                        />
-                                    </div>
-                                </dd>
-                            </div>
-                        </dl>
-                    </CardContent>
-                </Card>
+  return (
+    <AppLayout breadcrumbs={breadcrumbs}>
+      <Head title={project.name} />
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {/* Members */}
-                    <Card className="min-w-0">
-                        <CardHeader className="p-4 pb-0">
-                            <CardTitle className="flex items-center gap-2 text-base">
-                                <Users className="h-4 w-4" />
-                                Members ({project.members.length})
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-4">
-                            {project.members.length > 0 ? (
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Name</TableHead>
-                                                <TableHead>Email</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                        {project.members.map((member: Member) => (
-                                                <TableRow key={member.id}>
-                                                     <TableCell className="text-sm font-medium">
-                                                         <Link href={`/users/${member.user_id}`} className="text-m font-medium hover:underline leading-tight">
-                                                             {member.user_name}
-                                                         </Link>
-                                                     </TableCell>
-                                                     <TableCell className="text-muted-foreground">{member.user_email}</TableCell>
-                                                 </TableRow>
-                                             ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
-                            ) : (
-                                <p className="py-2 text-center text-sm text-muted-foreground">No members assigned yet.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Work Items */}
-                    <Card className="min-w-0">
-                        <CardHeader className="p-4 pb-0">
-                            <div className="flex items-center justify-between">
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <FileText className="h-4 w-4" />
-                                    Work Item Groups ({project.work_item_groups.length})
-                                </CardTitle>
-                                <div className="flex items-center gap-2">
-                        <Link href={`/projects/${project.id}/kanban`}>
-                            <Button variant="outline" size="sm">
-                                <Columns3 className="mr-1.5 h-4 w-4" />
-                                Kanban
-                            </Button>
-                        </Link>
-                        <Link href={`/projects/${project.id}/work-items`}>
-                            <Button variant="outline" size="sm">View All</Button>
-                        </Link>
-                        <Link href={`/projects/${project.id}/groups`}>
-                            <Button variant="outline" size="sm">Groups</Button>
-                        </Link>
-                                </div>
-                            </div>
-                        </CardHeader>
-                        <CardContent className="p-4">
-                            {project.work_items.length > 0 ? (
-                                <div className="space-y-3">
-                                    {project.work_item_groups.map((group) => {
-                                        const groupItems = project.work_items.filter((item) => item.group_id === group.id);
-                                        if (groupItems.length === 0) return null;
-                                        return (
-                                            <Collapsible key={group.id} defaultOpen={true}>
-                                                <div className="rounded-lg border">
-                                                    <CollapsibleTrigger asChild>
-                                                        <div className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors select-none">
-                                                            <div className="flex items-center gap-2">
-                                                                <ChevronDown className="h-3.5 w-3.5 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
-                                                                <span className="text-sm font-medium">{group.name}</span>
-                                                                <span className="text-xs text-muted-foreground">({groupItems.length})</span>
-                                                            </div>
-                                                            {group.end_date && (
-                                                                <span className="text-xs text-muted-foreground">Due {group.end_date}</span>
-                                                            )}
-                                                        </div>
-                                                    </CollapsibleTrigger>
-                                                    <CollapsibleContent>
-                                                        <div className="overflow-x-auto border-t">
-                                                            <Table>
-                                                                <TableHeader>
-                                                                    <TableRow>
-                                                                        <TableHead>Title</TableHead>
-                                                                        <TableHead>Priority</TableHead>
-                                                                        <TableHead>Due Date</TableHead>
-                                                                    </TableRow>
-                                                                </TableHeader>
-                                                                <TableBody>
-                                                                     {groupItems.map((item: WorkItem) => (
-                                                                         <TableRow key={item.id}>
-                                                                             <TableCell className="text-sm font-medium">
-                                                                                 <Link href={`/projects/${project.id}/work-items/${item.id}`} className="text-m font-medium hover:underline leading-tight">
-                                                                                     {item.title}
-                                                                                 </Link>
-                                                                             </TableCell>
-                                                                             <TableCell>
-                                                                                 <Badge variant={getPriorityVariant(item.priority)}>
-                                                                                     {item.priority}
-                                                                                 </Badge>
-                                                                             </TableCell>
-                                                                             <TableCell className="text-muted-foreground">{item.due_date}</TableCell>
-                                                                         </TableRow>
-                                                                     ))}
-                                                                </TableBody>
-                                                            </Table>
-                                                        </div>
-                                                    </CollapsibleContent>
-                                                </div>
-                                            </Collapsible>
-                                        );
-                                    })}
-                                    {project.work_items.filter((item) => item.group_id === null).length > 0 && (
-                                        <div className="rounded-lg border">
-                                            <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
-                                                <span className="text-sm font-medium">Ungrouped</span>
-                                                <span className="text-xs text-muted-foreground">
-                                                    ({project.work_items.filter((item) => item.group_id === null).length})
-                                                </span>
-                                            </div>
-                                            <div className="overflow-x-auto border-t">
-                                                <Table>
-                                                    <TableHeader>
-                                                        <TableRow>
-                                                            <TableHead>Title</TableHead>
-                                                            <TableHead>Priority</TableHead>
-                                                            <TableHead>Due Date</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {project.work_items.filter((item) => item.group_id === null).map((item: WorkItem) => (
-                                                            <TableRow key={item.id}>
-                                                                <TableCell className="font-medium">{item.title}</TableCell>
-                                                                <TableCell>
-                                                                    <Badge variant={getPriorityVariant(item.priority)}>
-                                                                        {item.priority}
-                                                                    </Badge>
-                                                                </TableCell>
-                                                                <TableCell className="text-muted-foreground">{item.due_date}</TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <p className="py-2 text-center text-sm text-muted-foreground">No work items yet.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-                </div>
-
-                {/* Milestones */}
-                <Card className="min-w-0">
-                    <CardHeader className="p-4 pb-0">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <Target className="h-4 w-4" />
-                            Milestones ({project.milestones.length})
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-4">
-                        {project.milestones.length > 0 ? (
-                            <div className="space-y-2">
-                                {project.milestones
-                                    .sort((a, b) => a.order - b.order)
-                                    .map((milestone) => (
-                                    <div key={milestone.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border px-4 py-3">
-                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                            <h4 className="text-sm font-medium truncate">{milestone.name}</h4>
-                                            <Badge variant={milestone.completed_at && Math.round(Math.min(100, milestone.completion_percentage)) >= 100 ? 'default' : 'secondary'} className="text-[10px] h-5 shrink-0">
-                                                {milestone.completed_at && Math.round(Math.min(100, milestone.completion_percentage)) >= 100 ? 'Done' : 'Active'}
-                                            </Badge>
-                                        </div>
-                                        <p className="hidden sm:block text-xs text-muted-foreground truncate max-w-[200px]">{milestone.description}</p>
-                                        <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
-                                            <span>{milestone.start_date}</span>
-                                            <span>→</span>
-                                            <span>{milestone.target_date}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0 w-32">
-                                            <span className="text-xs text-muted-foreground w-8 text-right">{Math.round(Math.min(100, milestone.completion_percentage))}%</span>
-                                            <div className="flex-1 bg-secondary rounded-full h-1.5 overflow-hidden">
-                                                <div
-                                                    className="bg-primary rounded-full h-1.5 transition-all"
-                                                    style={{ width: `${Math.min(100, milestone.completion_percentage)}%` }}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <p className="py-2 text-center text-sm text-muted-foreground">No milestones yet.</p>
-                        )}
-                    </CardContent>
-                </Card>
-
-                {/* Gantt Chart */}
-                <Collapsible defaultOpen={false} className="min-w-0">
-                    <Card className="min-w-0 overflow-hidden">
-                        <CollapsibleTrigger asChild>
-                            <CardHeader className="p-4 cursor-pointer hover:bg-muted/50 transition-colors select-none">
-                                <div className="flex items-center justify-between">
-                                    <CardTitle className="flex items-center gap-2 text-base">
-                                        <BarChart3 className="h-4 w-4" />
-                                        Project Timeline
-                                    </CardTitle>
-                                    <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
-                                </div>
-                            </CardHeader>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="min-w-0">
-                            <CardContent className="min-w-0 overflow-x-auto p-4 pt-0">
-                                <GanttChart 
-                                    milestones={project.milestones}
-                                    workItemGroups={project.work_item_groups}
-                                />
-                            </CardContent>
-                        </CollapsibleContent>
-                    </Card>
-                </Collapsible>
+      <div className="flex h-full min-w-0 flex-1 flex-col gap-6 p-6 max-w-7xl mx-auto w-full">
+        {/* Header Section */}
+        <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="h-8 w-8">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-xs uppercase px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                  {project.item_prefix}
+                </span>
+                <h1 className="text-2xl font-bold tracking-tight">{project.name}</h1>
+                {project.status_name && (
+                  <Badge variant="outline" className="ml-2">{project.status_name}</Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Created by {project.creator_name || 'Unknown'}
+              </p>
             </div>
-        </AppLayout>
-    );
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Setup
+            </Button>
+          </div>
+        </div>
+
+        {/* Tabbed View Navigation */}
+        <Tabs defaultValue="overview" className="w-full">
+          <div className="flex items-center justify-between border-b pb-2">
+            <TabsList className="bg-transparent p-0 gap-2">
+              <TabsTrigger value="overview" className="data-[state=active]:bg-muted">Overview</TabsTrigger>
+              <TabsTrigger value="kanban" className="data-[state=active]:bg-muted">
+                <Columns3 className="mr-1.5 h-3.5 w-3.5" /> Kanban
+              </TabsTrigger>
+              <TabsTrigger value="gantt" className="data-[state=active]:bg-muted">
+                <BarChart3 className="mr-1.5 h-3.5 w-3.5" /> Gantt
+              </TabsTrigger>
+              <TabsTrigger value="calendar" className="data-[state=active]:bg-muted">
+                <Calendar className="mr-1.5 h-3.5 w-3.5" /> Calendar
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex items-center gap-2">
+              <Link href={`/projects/${project.id}/work-items`}>
+                <Button variant="ghost" size="sm" className="h-8 text-xs">All Items</Button>
+              </Link>
+            </div>
+          </div>
+
+          {/* Overview View */}
+          <TabsContent value="overview" className="pt-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* Left/Main Column (2 cols) */}
+              <div className="lg:col-span-2 space-y-6">
+                
+                {/* Work Item Groups Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <FileText className="h-4 w-4" /> Work Item Groups
+                    </h3>
+                    <span className="text-xs text-muted-foreground">{totalItems} Total Items</span>
+                  </div>
+
+                  {project.work_item_groups.map((group: any) => {
+                    const groupItems = project.work_items.filter((i: any) => i.group_id === group.id);
+                    if (groupItems.length === 0) return null;
+
+                    return (
+                      <Collapsible key={group.id} defaultOpen className="rounded-lg border bg-card">
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors select-none">
+                            <div className="flex items-center gap-2">
+                              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform duration-200 data-[state=open]:rotate-180" />
+                              <span className="font-medium text-sm">{group.name}</span>
+                              <Badge variant="secondary" className="text-[10px] h-4 px-1.5">{groupItems.length}</Badge>
+                            </div>
+                            {group.end_date && (
+                              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Calendar className="h-3 w-3" /> Due {group.end_date}
+                              </span>
+                            )}
+                          </div>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <Table>
+                            <TableHeader>
+                              <TableRow className="bg-muted/20 hover:bg-muted/20">
+                                <TableHead className="w-[60%]">Title</TableHead>
+                                <TableHead>Priority</TableHead>
+                                <TableHead className="text-right">Due Date</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {groupItems.map((item: any) => (
+                                <TableRow key={item.id}>
+                                  <TableCell className="font-medium text-sm">
+                                    <Link href={`/projects/${project.id}/work-items/${item.id}`} className="hover:underline">
+                                      {item.title}
+                                    </Link>
+                                  </TableCell>
+                                  <TableCell>
+                                    <Badge variant={getPriorityVariant(item.priority)} className="capitalize text-[10px]">
+                                      {item.priority}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell className="text-right text-xs text-muted-foreground">{item.due_date || '—'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    );
+                  })}
+                </div>
+
+                {/* Milestones Section */}
+                <div className="space-y-3 pt-2">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                    <Target className="h-4 w-4" /> Milestones ({project.milestones.length})
+                  </h3>
+
+                  <div className="grid gap-3">
+                    {project.milestones.map((m: any) => (
+                      <div key={m.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-lg border bg-card gap-3">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{m.name}</span>
+                            <Badge variant={m.completed_at ? 'default' : 'outline'} className="text-[10px]">
+                              {m.completed_at ? 'Done' : 'Active'}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground line-clamp-1">{m.description || 'No description provided.'}</p>
+                        </div>
+                        <div className="flex items-center gap-4 shrink-0">
+                          <span className="text-xs text-muted-foreground">{m.start_date} → {m.target_date}</span>
+                          <div className="w-20 bg-secondary rounded-full h-1.5">
+                            <div className="bg-primary rounded-full h-1.5 transition-all" style={{ width: `${Math.min(100, m.completion_percentage)}%` }} />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Sidebar (1 col) */}
+              <div className="space-y-6">
+                
+                {/* Progress Overview */}
+                <div className="p-4 rounded-lg border bg-card space-y-3">
+                  <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider">Project Health</h4>
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Overall Progress</span>
+                      <span className="font-semibold">{progressPercent}%</span>
+                    </div>
+                    <div className="w-full bg-secondary rounded-full h-2">
+                      <div className="bg-primary rounded-full h-2 transition-all" style={{ width: `${progressPercent}%` }} />
+                    </div>
+                  </div>
+                  {project.description && (
+                    <p className="text-xs text-muted-foreground pt-2 border-t mt-2">{project.description}</p>
+                  )}
+                </div>
+
+                {/* Team Members List */}
+                <div className="p-4 rounded-lg border bg-card space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wider flex items-center gap-1.5">
+                      <Users className="h-3.5 w-3.5" /> Team ({project.members.length})
+                    </h4>
+                  </div>
+                  <div className="divide-y divide-border">
+                    {project.members.map((member: any) => (
+                      <div key={member.id} className="flex items-center justify-between py-2 first:pt-0 last:pb-0">
+                        <div className="flex items-center gap-2.5">
+                          <Avatar className="h-7 w-7">
+                            <AvatarFallback className="text-[10px] uppercase">{member.user_name?.substring(0, 2)}</AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <Link href={`/users/${member.user_id}`} className="text-xs font-medium hover:underline">
+                              {member.user_name}
+                            </Link>
+                            <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">{member.user_email}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+          </TabsContent>
+
+          {/* Kanban Tab */}
+          <TabsContent value="kanban" className="pt-4">
+            <div className="p-4 rounded-lg border bg-card h-full">
+              <KanbanBoard columns={columns} statuses={statuses} />
+            </div>
+          </TabsContent>
+
+          {/* Gantt Tab */}
+          <TabsContent value="gantt" className="pt-4">
+            <div className="p-4 rounded-lg border bg-card">
+              <InteractiveGanttChart
+                projectId={project.id}
+                workItems={workItems || []}
+                milestones={project.milestones || []}
+                workItemGroups={(project.work_item_groups || []).map((g: any) => ({
+                  ...g,
+                  completion_percentage: g.completion_percentage || 0,
+                }))}
+              />
+            </div>
+          </TabsContent>
+
+          {/* Calendar Tab */}
+          <TabsContent value="calendar" className="pt-4">
+            <div className="p-4 rounded-lg border bg-card">
+              <CalendarView
+                workItems={(workItems || []).map((i: any) => ({
+                  ...i,
+                  due_date: i.due_date,
+                  progress: i.progress ?? 0,
+                }))}
+                milestones={project.milestones || []}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* Setup Modal/Sheet */}
+        {setup && (
+          <ProjectSetupSheet
+            open={editOpen}
+            onOpenChange={setEditOpen}
+            mode="edit"
+            project={{
+              name: project.name,
+              description: project.description,
+              item_prefix: project.item_prefix,
+              start_date: project.start_date,
+              end_date: project.end_date,
+            }}
+            statusName={project.status_name ?? ''}
+            statuses={setup.statuses}
+            allUsers={setup.allUsers}
+            workItemStatuses={setup.workItemStatuses}
+            initialMemberIds={setup.memberIds}
+            initialMilestones={setup.milestones}
+            onSuccess={() => setEditOpen(false)}
+          />
+        )}
+      </div>
+    </AppLayout>
+  );
 }

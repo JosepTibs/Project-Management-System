@@ -15,8 +15,11 @@ return new class extends Migration
             $table->id();
             $table->string('name');
             $table->unsignedBigInteger('created_by');
+            $table->string('status_id')->nullable();
             $table->text('description');
             $table->string('item_prefix');
+            $table->date('start_date')->nullable();
+            $table->date('end_date')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

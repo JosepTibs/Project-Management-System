@@ -1,15 +1,8 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { router } from '@inertiajs/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Link2, Link2Off, ChevronRight, ChevronDown } from 'lucide-react';
+import { Link2, Link2Off, ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
 
-interface Subtask {
-    id: number;
-    title: string;
-    description: string;
-    due_date: string | null;
-    completed_at: string | null;
-}
 
 interface WorkItem {
     id: number;
@@ -22,7 +15,6 @@ interface WorkItem {
     status: { id: number; name: string } | null;
     assignee: { id: number; name: string } | null;
     group_id: number | null;
-    subtasks?: Subtask[];
 }
 
 interface Milestone {
@@ -60,7 +52,7 @@ interface TimelineItem {
     name: string;
     start: Date;
     end: Date;
-    type: "task" | "milestone" | "group" | "subtask";
+    type: "task" | "milestone" | "group";
     progress: number;
     level: number;
     description?: string;
@@ -75,10 +67,12 @@ interface InteractiveGanttChartProps {
     workItemGroups: WorkItemGroup[];
 }
 
-const DAY_WIDTH = 28;
+// NAME_WIDTH / INDENT_WIDTH stay fixed regardless of fullscreen.
+// BASE_DAY_WIDTH is used ONLY for date-range math (drag offset estimation)
+// so it never depends on totalDays — avoiding a circular dependency.
 const NAME_WIDTH = 240;
-const ROW_HEIGHT = 56;
 const INDENT_WIDTH = 20;
+const BASE_DAY_WIDTH = 28;
 
 function stripTime(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -175,6 +169,8 @@ interface DragState {
 interface DependencyPreview {
     fromTaskId: string;
     toTaskId: string | null;
+    startX: number;
+    startY: number;
     x: number;
     y: number;
 }
@@ -199,6 +195,12 @@ export default function InteractiveGanttChart({
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const deleteDepHoverRef = useRef(false);
 
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [containerWidth, setContainerWidth] = useState(0);
+
+    // Denser row height in fullscreen so more of the chart is visible at once
+    const ROW_HEIGHT = isFullscreen ? 40 : 56;
+
     const toggleMilestone = (id: number) => {
         setCollapsedMilestones((prev) => {
             const next = new Set(prev);
@@ -220,22 +222,65 @@ export default function InteractiveGanttChart({
     const toggleTask = (id: number) => {
         setCollapsedTasks((prev) => {
             const next = new Set(prev);
-            if(next.has(id)) next.delete(id);
+            if (next.has(id)) next.delete(id);
             else next.add(id);
             return next;
-        })
-    }
-    const removeDependency = useCallback(
-    (dep: Dependency) => {
-        if (!window.confirm(`Remove dependency ${dep.predecessor.title} → ${dep.successor.title}?`)) return;
-        router.delete(`/projects/${projectId}/dependencies/${dep.id}`, {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => setDependencies((prev) => prev.filter((d) => d.id !== dep.id)),
         });
-    },
-    [projectId]
+    };
+
+    const removeDependency = useCallback(
+        (dep: Dependency) => {
+            if (!window.confirm(`Remove dependency ${dep.predecessor.title} → ${dep.successor.title}?`)) return;
+            router.delete(`/projects/${projectId}/dependencies/${dep.id}`, {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => setDependencies((prev) => prev.filter((d) => d.id !== dep.id)),
+            });
+        },
+        [projectId]
     );
+
+    const findMilestoneForGroup = useCallback((groupId: number): Milestone | undefined => {
+        const group = localGroups.find(g => g.id === groupId);
+        if(!group?.milestone_id) return undefined;
+        return localMilestones.find(m => m.id === group.milestone_id);
+    }, [localGroups, localMilestones]);
+
+    const findGroupForTask = useCallback((taskId: number): WorkItemGroup | undefined => {
+        const task = localWorkItems.find(w => w.id === taskId);
+        if(!task?.group_id) return undefined;
+        return localGroups.find(g => g.id === task.group_id);
+    }, [localWorkItems, localGroups]);
+
+    // Track viewport width while in fullscreen so DAY_WIDTH can be fitted to it
+    useEffect(() => {
+        if (!isFullscreen) return;
+        const update = () => setContainerWidth(window.innerWidth);
+        update();
+        window.addEventListener("resize", update);
+        return () => window.removeEventListener("resize", update);
+    }, [isFullscreen]);
+
+    // Escape-to-exit fullscreen + lock background scroll while active
+    useEffect(() => {
+        if (!isFullscreen) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                setIsFullscreen(false);
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+
+        const previousOverflow = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+
+        return () => {
+            window.removeEventListener("keydown", handleKeyDown);
+            document.body.style.overflow = previousOverflow;
+        };
+    }, [isFullscreen]);
 
     // Fetch dependencies on mount
     useEffect(() => {
@@ -299,7 +344,7 @@ export default function InteractiveGanttChart({
                 collapsed: collapsedMilestones.has(milestone.id),
             });
 
-                for (const group of groups) {
+            for (const group of groups) {
                 const groupStart = group.start_date ? new Date(group.start_date) : new Date();
                 const groupEnd = group.end_date ? new Date(group.end_date) : new Date();
                 const isCollapsed = collapsedMilestones.has(milestone.id) || collapsedGroups.has(group.id);
@@ -344,28 +389,6 @@ export default function InteractiveGanttChart({
                             assignee: task.assignee,
                             collapsed: collapsedTasks.has(task.id),
                         });
-
-                        // Add subtasks only when this task is expanded
-                        if (!collapsedTasks.has(task.id)) {
-                            for (const subtask of task.subtasks || []) {
-                                if (!subtask.due_date) continue;
-                                const subEnd = new Date(subtask.due_date);
-                                if (isNaN(subEnd.getTime())) continue;
-                                const subStart = subtask.completed_at ? new Date(subtask.completed_at) : subEnd;
-
-                                result.push({
-                                    id: `subtask-${subtask.id}`,
-                                    taskId: subtask.id,
-                                    name: subtask.title,
-                                    start: subStart,
-                                    end: subEnd,
-                                    type: "subtask",
-                                    progress: subtask.completed_at ? 100 : 0,
-                                    level: 3,
-                                    description: subtask.description,
-                                });
-                            }
-                        }
                     }
                 }
             }
@@ -401,32 +424,14 @@ export default function InteractiveGanttChart({
                 assignee: task.assignee,
                 collapsed: collapsedTasks.has(task.id),
             });
-
-            if (!collapsedTasks.has(task.id)) {
-                for (const subtask of task.subtasks || []) {
-                    if (!subtask.due_date) continue;
-                    const subEnd = new Date(subtask.due_date);
-                    if (isNaN(subEnd.getTime())) continue;
-                    const subStart = subtask.completed_at ? new Date(subtask.completed_at) : subEnd;
-
-                    result.push({
-                        id: `subtask-${subtask.id}`,
-                        taskId: subtask.id,
-                        name: subtask.title,
-                        start: subStart,
-                        end: subEnd,
-                        type: "subtask",
-                        progress: subtask.completed_at ? 100 : 0,
-                        level: 2,
-                        description: subtask.description,
-                    });
-                }
-            }
         }
 
         return result;
     }, [localWorkItems, localMilestones, localGroups, collapsedMilestones, collapsedGroups, collapsedTasks]);
 
+    // NOTE: this memo uses BASE_DAY_WIDTH (a fixed constant) rather than the
+    // dynamic DAY_WIDTH, since DAY_WIDTH below depends on totalDays and would
+    // otherwise create a circular "used before declaration" dependency.
     const { earliest, totalDays, days, monthGroups, todayOffset } = useMemo(() => {
         if (!items.length) {
             return {
@@ -446,7 +451,7 @@ export default function InteractiveGanttChart({
         if (dragState?.mode === "move" && dragState.itemId) {
             const draggedItem = items.find((i) => i.id === dragState.itemId);
             if (draggedItem) {
-                const offsetDays = Math.round(dragState.currentOffset / DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / BASE_DAY_WIDTH);
                 const previewStart = addDays(draggedItem.start, offsetDays);
                 const previewEnd = addDays(draggedItem.end, offsetDays);
                 allStartDates = [...allStartDates, previewStart.getTime()];
@@ -456,7 +461,7 @@ export default function InteractiveGanttChart({
         if (dragState?.mode === "resize-end" && dragState.itemId) {
             const draggedItem = items.find((i) => i.id === dragState.itemId);
             if (draggedItem) {
-                const offsetDays = Math.round(dragState.currentOffset / DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / BASE_DAY_WIDTH);
                 const previewEnd = addDays(draggedItem.end, offsetDays);
                 allEndDates = [...allEndDates, previewEnd.getTime()];
             }
@@ -464,7 +469,7 @@ export default function InteractiveGanttChart({
         if (dragState?.mode === "resize-start" && dragState.itemId) {
             const draggedItem = items.find((i) => i.id === dragState.itemId);
             if (draggedItem) {
-                const offsetDays = Math.round(dragState.currentOffset / DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / BASE_DAY_WIDTH);
                 const previewStart = addDays(draggedItem.start, offsetDays);
                 allStartDates = [...allStartDates, previewStart.getTime()];
             }
@@ -484,6 +489,19 @@ export default function InteractiveGanttChart({
 
         return { earliest, totalDays, days, monthGroups, todayOffset };
     }, [items, dragState]);
+
+    // Rendering DAY_WIDTH: declared AFTER totalDays exists.
+    // In fullscreen, fit the whole date range to the viewport width so more
+    // of the chart is visible; otherwise use a comfortable fixed width.
+    const DAY_WIDTH = useMemo(() => {
+        if (!isFullscreen) return 28;
+        if (!containerWidth || totalDays === 0) return 20;
+
+        const available = containerWidth - NAME_WIDTH;
+        const fitWidth = Math.floor(available / totalDays);
+        // clamp so days don't get unreadably thin or absurdly fat
+        return Math.min(Math.max(fitWidth,28), 40);
+    }, [isFullscreen, containerWidth, totalDays]);
 
     // Get the displayed position/duration for an item considering drag state
     const getItemLayout = useCallback(
@@ -510,13 +528,13 @@ export default function InteractiveGanttChart({
 
             return { start, end, startOffset, duration, barWidth, barLeft };
         },
-        [dragState, earliest]
+        [dragState, earliest, DAY_WIDTH]
     );
 
     // Handle drag start on bars (tasks, groups, milestones)
     const handleDragStart = useCallback(
         (e: React.MouseEvent, item: TimelineItem, mode: DragMode) => {
-            if (item.type !== "task" && item.type !== "group" && item.type !== "milestone" && item.type !== "subtask") return;
+            if (item.type !== "task" && item.type !== "group" && item.type !== "milestone") return;
             e.preventDefault();
             e.stopPropagation();
 
@@ -542,6 +560,8 @@ export default function InteractiveGanttChart({
             setDepPreview({
                 fromTaskId: item.id,
                 toTaskId: null,
+                startX: e.clientX,
+                startY: e.clientY,
                 x: e.clientX,
                 y: e.clientY,
             });
@@ -549,32 +569,62 @@ export default function InteractiveGanttChart({
         []
     );
 
-    // Handle mouse move for drag operations
+        // Handle mouse move for drag operations
     const handleGlobalMouseMove = useCallback(
         (e: MouseEvent) => {
             // Handle dependency preview
             if (depPreview) {
-                const container = containerRef.current;
-                if (container) {
-                    const rect = container.getBoundingClientRect();
-                    const x = e.clientX - rect.left;
-                    const y = e.clientY - rect.top;
-                    setDepPreview((prev) => (prev ? { ...prev, x, y } : prev));
-                }
+                setDepPreview((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
                 return;
             }
 
             // Handle move/resize drag
             if (dragState?.mode && (dragState.mode === "move" || dragState.mode === "resize-start" || dragState.mode === "resize-end")) {
                 const offset = e.clientX - dragState.startX;
-                setDragState((prev) => (prev ? { ...prev, currentOffset: offset } : prev));
+                let clampedOffset = offset;
+
+                // Live clamping: enforce task boundary constraints during drag
+                const item = items.find((i) => i.id === dragState.itemId);
+                if (item && item.type === "task" && item.taskId) {
+                    const taskGroup = findGroupForTask(item.taskId);
+                    if (taskGroup && taskGroup.start_date && taskGroup.end_date) {
+                        const offsetDays = Math.round(offset / DAY_WIDTH);
+                        const groupStart = new Date(taskGroup.start_date);
+                        const groupEnd = new Date(taskGroup.end_date);
+
+                        if (dragState.mode === "move") {
+                            const newStart = addDays(item.start, offsetDays);
+                            const newEnd = addDays(item.end, offsetDays);
+
+                            if (newStart < groupStart) {
+                                clampedOffset = differenceInDays(groupStart, item.start) * DAY_WIDTH;
+                            }
+                            if (newEnd > groupEnd) {
+                                clampedOffset = Math.min(clampedOffset, differenceInDays(groupEnd, item.end) * DAY_WIDTH);
+                            }
+                        } else if (dragState.mode === "resize-end") {
+                            const newEnd = addDays(item.end, offsetDays);
+                            if (newEnd > groupEnd) {
+                                clampedOffset = differenceInDays(groupEnd, item.end) * DAY_WIDTH;
+                            }
+                        } else if (dragState.mode === "resize-start") {
+                            const newStart = addDays(item.start, offsetDays);
+                            if (newStart < groupStart) {
+                                clampedOffset = differenceInDays(groupStart, item.start) * DAY_WIDTH;
+                            }
+                        }
+                    }
+                }
+
+                setDragState((prev) => (prev ? { ...prev, currentOffset: clampedOffset } : prev));
             }
         },
-        [dragState, depPreview]
+        [dragState, depPreview, items, DAY_WIDTH, findGroupForTask]
     );
 
     // Handle mouse up for drag operations
     const handleGlobalMouseUp = useCallback(() => {
+        
         // Handle dependency creation
         if (depPreview) {
             // Find which task bar we dropped on
@@ -655,19 +705,73 @@ export default function InteractiveGanttChart({
                 return;
             }
 
-            if (dragState.mode === "move") {
-                const newStart = addDays(item.start, offsetDays);
-                const newEnd = addDays(item.end, offsetDays);
+                                    if (dragState.mode === "move") {
+                let newStart = addDays(item.start, offsetDays);
+                let newEnd = addDays(item.end, offsetDays);
+
+                // Constraint: Group cannot exceed milestone target_date
+                if (item.type === "group") {
+                    const groupId = parseInt(item.id.replace('group-', ''));
+                    const milestone = findMilestoneForGroup(groupId);
+                    if (milestone && milestone.target_date) {
+                        const milestoneTarget = new Date(milestone.target_date);
+
+                        // Clamp group's end to milestone's target_date
+                        if (newEnd > milestoneTarget) {
+                            const groupDuration = differenceInDays(item.end, item.start);
+                            newEnd = milestoneTarget;
+                            newStart = addDays(newEnd, -groupDuration);
+
+                            // If clamping results in no movement, skip entirely
+                            if (newStart.getTime() === item.start.getTime()) {
+                                setDragState(null);
+                                return;
+                            }
+                        }
+                    }
+                }
 
                 if (item.type === "task" && item.taskId) {
+                    // Constraint: Task cannot exceed its parent group's date range
+                    let constrainedStart = newStart;
+                    let constrainedEnd = newEnd;
+
+                    const group = findGroupForTask(item.taskId);
+                    if (group && group.start_date && group.end_date) {
+                        const groupStart = new Date(group.start_date);
+                        const groupEnd = new Date(group.end_date);
+                        const taskDuration = differenceInDays(item.end, item.start);
+
+                        // Task start cannot be before group start
+                        if (constrainedStart < groupStart) {
+                            constrainedStart = groupStart;
+                            constrainedEnd = addDays(constrainedStart, taskDuration);
+                        }
+
+                        // Task end cannot exceed group end
+                        if (constrainedEnd > groupEnd) {
+                            constrainedEnd = groupEnd;
+                            constrainedStart = addDays(constrainedEnd, -taskDuration);
+                        }
+
+                        // If no movement after clamping, skip save
+                        if (
+                            constrainedStart.getTime() === item.start.getTime() &&
+                            constrainedEnd.getTime() === item.end.getTime()
+                        ) {
+                            setDragState(null);
+                            return;
+                        }
+                    }
+
                     // Optimistic update for tasks
                     setLocalWorkItems((prev) =>
                         prev.map((wi) =>
                             wi.id === item.taskId
                                 ? {
                                       ...wi,
-                                      start_date: newStart.toISOString().slice(0, 10),
-                                      due_date: newEnd.toISOString().slice(0, 10),
+                                      start_date: constrainedStart.toISOString().slice(0, 10),
+                                      due_date: constrainedEnd.toISOString().slice(0, 10),
                                   }
                                 : wi
                         )
@@ -678,7 +782,7 @@ export default function InteractiveGanttChart({
                     saveTimerRef.current = setTimeout(() => {
                         router.patch(
                             `/projects/${projectId}/work-items/${item.taskId}/move`,
-                            { start_date: newStart.toISOString().slice(0, 10) },
+                            { start_date: constrainedStart.toISOString().slice(0, 10) },
                             {
                                 preserveScroll: true,
                                 preserveState: true,
@@ -690,20 +794,22 @@ export default function InteractiveGanttChart({
                     }, 300);
                 } else if (item.type === "group") {
                     const groupId = parseInt(item.id.replace('group-', ''));
-                     setLocalGroups(prev => prev.map(g => 
-                        g.id === groupId ? 
-                        { ...g, 
-                        start_date: newStart.toISOString().slice(0,10),
-                        end_date: newEnd.toISOString().slice(0,10),  } : g
+                    setLocalGroups(prev => prev.map(g =>
+                        g.id === groupId ?
+                            {
+                                ...g,
+                                start_date: newStart.toISOString().slice(0, 10),
+                                end_date: newEnd.toISOString().slice(0, 10),
+                            } : g
                     ));
 
-                    if(saveTimerRef.current) clearTimeout(saveTimerRef.current);
-                    saveTimerRef.current = setTimeout(() =>{
+                    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                    saveTimerRef.current = setTimeout(() => {
                         router.patch(
                             `/projects/${projectId}/groups/${groupId}/move`,
                             {
-                                start_date: newStart.toISOString().slice(0,10),
-                                end_date: newEnd.toISOString().slice(0,10),                           
+                                start_date: newStart.toISOString().slice(0, 10),
+                                end_date: newEnd.toISOString().slice(0, 10),
                             },
                             {
                                 preserveScroll: true,
@@ -716,18 +822,19 @@ export default function InteractiveGanttChart({
                     }, 300);
                 } else if (item.type === "milestone") {
                     const milestoneId = parseInt(item.id.replace('milestone-', ''));
-                    setLocalMilestones(prev => prev.map(m => 
-                        m.id === milestoneId ? 
-                        { ...m, 
-                        target_date: newStart.toISOString().slice(0,10),
-                        } : m
+                    setLocalMilestones(prev => prev.map(m =>
+                        m.id === milestoneId ?
+                            {
+                                ...m,
+                                target_date: newStart.toISOString().slice(0, 10),
+                            } : m
                     ));
-                    if(saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
                     saveTimerRef.current = setTimeout(() => {
                         router.patch(
                             `/projects/${projectId}/milestones/${milestoneId}/move`,
                             {
-                                target_date: newStart.toISOString().slice(0,10),
+                                target_date: newStart.toISOString().slice(0, 10),
                             },
                             {
                                 preserveScroll: true,
@@ -737,13 +844,11 @@ export default function InteractiveGanttChart({
                                 }
                             }
                         );
-                        
                     }, 300);
-                    
                 }
             }
 
-            if (dragState.mode === "resize-end") {
+                if (dragState.mode === "resize-end") {
                 const newEnd = addDays(item.end, offsetDays);
                 if (newEnd < item.start) {
                     setDragState(null);
@@ -751,10 +856,28 @@ export default function InteractiveGanttChart({
                 }
 
                 if (item.type === "task" && item.taskId) {
+                    // Constraint: Task end cannot exceed its parent group's end date
+                    let constrainedEnd = newEnd;
+
+                    const group = findGroupForTask(item.taskId);
+                    if (group && group.end_date) {
+                        const groupEnd = new Date(group.end_date);
+
+                        if (constrainedEnd > groupEnd) {
+                            constrainedEnd = groupEnd;
+                        }
+
+                        // If no effective change, skip save
+                        if (constrainedEnd.getTime() === item.end.getTime()) {
+                            setDragState(null);
+                            return;
+                        }
+                    }
+
                     setLocalWorkItems((prev) =>
                         prev.map((wi) =>
                             wi.id === item.taskId
-                                ? { ...wi, due_date: newEnd.toISOString().slice(0, 10) }
+                                ? { ...wi, due_date: constrainedEnd.toISOString().slice(0, 10) }
                                 : wi
                         )
                     );
@@ -765,7 +888,7 @@ export default function InteractiveGanttChart({
                             `/projects/${projectId}/work-items/${item.taskId}/resize`,
                             {
                                 start_date: item.start.toISOString().slice(0, 10),
-                                due_date: newEnd.toISOString().slice(0, 10),
+                                due_date: constrainedEnd.toISOString().slice(0, 10),
                             },
                             {
                                 preserveScroll: true,
@@ -779,7 +902,7 @@ export default function InteractiveGanttChart({
                 }
             }
 
-            if (dragState.mode === "resize-start") {
+                                    if (dragState.mode === "resize-start") {
                 const newStart = addDays(item.start, offsetDays);
                 if (newStart > item.end) {
                     setDragState(null);
@@ -787,10 +910,28 @@ export default function InteractiveGanttChart({
                 }
 
                 if (item.type === "task" && item.taskId) {
+                    // Constraint: Task start cannot go before its parent group's start date
+                    let constrainedStart = newStart;
+
+                    const group = findGroupForTask(item.taskId);
+                    if (group && group.start_date) {
+                        const groupStart = new Date(group.start_date);
+
+                        if (constrainedStart < groupStart) {
+                            constrainedStart = groupStart;
+                        }
+
+                        // If no effective change, skip save
+                        if (constrainedStart.getTime() === item.start.getTime()) {
+                            setDragState(null);
+                            return;
+                        }
+                    }
+
                     setLocalWorkItems((prev) =>
                         prev.map((wi) =>
                             wi.id === item.taskId
-                                ? { ...wi, start_date: newStart.toISOString().slice(0, 10) }
+                                ? { ...wi, start_date: constrainedStart.toISOString().slice(0, 10) }
                                 : wi
                         )
                     );
@@ -800,7 +941,7 @@ export default function InteractiveGanttChart({
                         router.patch(
                             `/projects/${projectId}/work-items/${item.taskId}/resize`,
                             {
-                                start_date: newStart.toISOString().slice(0, 10),
+                                start_date: constrainedStart.toISOString().slice(0, 10),
                                 due_date: item.end.toISOString().slice(0, 10),
                             },
                             {
@@ -816,8 +957,8 @@ export default function InteractiveGanttChart({
             }
         }
 
-        setDragState(null);
-    }, [dragState, depPreview, items, projectId, workItems]);
+                setDragState(null);
+    }, [dragState, depPreview, items, projectId, workItems, DAY_WIDTH, findGroupForTask, findMilestoneForGroup]);
 
     // Attach global mouse listeners
     useEffect(() => {
@@ -840,7 +981,14 @@ export default function InteractiveGanttChart({
     }
 
     return (
-        <div className="w-full max-w-full min-w-0 max-h-screen rounded-lg border bg-background overflow-x-auto overflow-y-auto" ref={containerRef}>
+        <div
+            className={
+                isFullscreen
+                    ? "fixed inset-0 z-[100] bg-background overflow-x-auto overflow-y-auto"
+                    : "w-full max-w-full min-w-0 max-h-screen rounded-lg border bg-background overflow-x-auto overflow-y-auto"
+            }
+            ref={containerRef}
+        >
             <TooltipProvider delayDuration={300}>
                 <div
                     className="grid"
@@ -860,6 +1008,13 @@ export default function InteractiveGanttChart({
                             className="inline-flex items-center justify-center h-6 w-6 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
                         >
                             {showDependencies ? <Link2 className="h-3.5 w-3.5 text-blue-600" /> : <Link2Off className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                            onClick={() => setIsFullscreen((prev) => !prev)}
+                            title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+                            className="inline-flex items-center justify-center h-6 w-6 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
+                        >
+                            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
                         </button>
                     </div>
 
@@ -914,9 +1069,9 @@ export default function InteractiveGanttChart({
                                                     onClick={() => {
                                                         if (item.type === "milestone") {
                                                             toggleMilestone(parseInt(item.id.replace('milestone-', '')));
-                                                        } else if  (item.type === "group") {
+                                                        } else if (item.type === "group") {
                                                             toggleGroup(parseInt(item.id.replace('group-', '')));
-                                                        } else if (item.type === "task"){
+                                                        } else if (item.type === "task") {
                                                             toggleTask(parseInt(item.id.replace('task-', '')));
                                                         }
                                                     }}
@@ -932,9 +1087,7 @@ export default function InteractiveGanttChart({
                                             {item.type === "task" && (
                                                 <span className="inline-block w-4 shrink-0" />
                                             )}
-                                            {item.type === "subtask" && (
-                                                <span className="inline-block w-6 shrink-0" />
-                                            )}
+
                                             <span className="min-w-0 flex-1 text-sm font-medium truncate">
                                                 {item.name}
                                             </span>
@@ -947,16 +1100,13 @@ export default function InteractiveGanttChart({
                                                           : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400"
                                                 }`}
                                             >
-                                                {item.type === "milestone" ? "Milestone" : item.type === "group" ? "Group" : item.type === "task" ?"Task" : "Subtask"}
+                                                {item.type === "milestone" ? "Milestone" : item.type === "group" ? "Group" : "Task"}
                                             </span>
                                         </div>
                                         <div className="text-xs text-muted-foreground mt-0.5 truncate">
                                             {item.type === "milestone"
                                                 ? `Due: ${formatDateShort(item.end)}`
                                                 : formatDateRange(layout.start, layout.end)}
-                                            <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                                            </div>
-                                            
                                         </div>
                                     </div>
                                 </div>
@@ -985,14 +1135,14 @@ export default function InteractiveGanttChart({
                                         <>
                                             <div
                                                 className="absolute top-0 bottom-0 z-10 pointer-events-none"
-                                                style={{ left: todayOffset * DAY_WIDTH }}
+                                                style={{ left: todayOffset * DAY_WIDTH + 12 }}
                                             >
                                                 <div className="w-px h-full bg-blue-500/60" />
                                             </div>
                                             <div
                                                 className="absolute -top-0.5 z-10 rounded bg-blue-500 px-1 py-[1px] text-[9px] font-bold text-white whitespace-nowrap pointer-events-none"
                                                 style={{
-                                                    left: Math.max(20, Math.min(todayOffset * DAY_WIDTH, totalDays * DAY_WIDTH - 20)),
+                                                    left: Math.max(20, Math.min(todayOffset * DAY_WIDTH + 12, totalDays * DAY_WIDTH - 20)),
                                                     transform: "translateX(-50%)",
                                                 }}
                                             >
@@ -1012,50 +1162,49 @@ export default function InteractiveGanttChart({
                                                 >
                                                     {item.type === "task" ? (
                                                         <>
-                                                        <span className="relative z-10 flex items-center h-full px-2 text-[11px] font-semibold text-white whitespace-nowrap pointer-events-none">
-                                                                   {item.assignee?.name} | Progress:  {item.progress > 0 ? `${item.progress}%` : ""}
-                                                                </span>
-                                                        <div
-                                                            className={`relative h-7 rounded-md overflow-hidden cursor-grab active:cursor-grabbing select-none
+                                                            <span className="relative z-10 flex items-center h-full px-2 text-[11px] font-semibold text-white whitespace-nowrap pointer-events-none">
+                                                                {item.assignee?.name} | Progress:  {item.progress > 0 ? `${item.progress}%` : ""}
+                                                            </span>
+                                                            <div
+                                                                className={`relative h-7 rounded-md overflow-hidden cursor-grab active:cursor-grabbing select-none
                                                                 bg-gradient-to-r from-indigo-600 to-indigo-500
                                                                 shadow-md hover:shadow-lg
                                                                 hover:from-indigo-700 hover:to-indigo-600
                                                                 transition-colors duration-150
                                                                 ${isDragging && dragState?.mode === "move" ? "shadow-xl ring-2 ring-indigo-400/50" : ""}
                                                                 ${isDragging && dragState?.mode !== "move" ? "ring-2 ring-amber-400/60" : ""}`}
-                                                        >
-                                                            {/* Progress fill */}
-                                                            <div
-                                                                className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-800/40 to-indigo-700/20 transition-all duration-500 pointer-events-none"
-                                                                style={{ width: `${item.progress}%` }}
-                                                            />
-                                                            {/* Label */}
-                                                            {layout.barWidth > 50 && (
-                                                                
-                                                                <span className="relative z-10 flex items-center w-full h-full px-2 text-[11px] font-semibold text-white truncate pointer-events-none">
-                                                                   {item.name} 
-                                                                </span>
-                                                            )}
-
-                                                            {/* Resize handles */}
-                                                            <div
-                                                                className="absolute left-1.5 top-0 bottom-0 w-3.5 cursor-ew-resize hover:bg-white/40 rounded-l-md z-30"
-                                                                onMouseDown={(e) => handleDragStart(e, item, "resize-start")}
-                                                            />
-                                                            <div
-                                                                className="absolute right-1.5 top-0 bottom-0 w-3.5 cursor-ew-resize hover:bg-white/40 rounded-r-md z-30"
-                                                                onMouseDown={(e) => handleDragStart(e, item, "resize-end")}
-                                                            />
-
-                                                            {/* Dependency connection handle */}
-                                                            <div
-                                                                className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-5 w-5 rounded-full border border-indigo-300 bg-white/90 text-indigo-600 cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                                                onMouseDown={(e) => handleDepDragStart(e, item)}
-                                                                title="Drag to create dependency"
                                                             >
-                                                                <Link2 className="h-3 w-3" />
+                                                                {/* Progress fill */}
+                                                                <div
+                                                                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-800/40 to-indigo-700/20 transition-all duration-500 pointer-events-none"
+                                                                    style={{ width: `${item.progress}%` }}
+                                                                />
+                                                                {/* Label */}
+                                                                {layout.barWidth > 50 && (
+                                                                    <span className="relative z-10 flex items-center w-full h-full px-2 text-[11px] font-semibold text-white truncate pointer-events-none">
+                                                                        {item.name}
+                                                                    </span>
+                                                                )}
+
+                                                                {/* Resize handles */}
+                                                                <div
+                                                                    className="absolute left-1.5 top-0 bottom-0 w-3.5 cursor-ew-resize hover:bg-white/40 rounded-l-md z-30"
+                                                                    onMouseDown={(e) => handleDragStart(e, item, "resize-start")}
+                                                                />
+                                                                <div
+                                                                    className="absolute right-1.5 top-0 bottom-0 w-3.5 cursor-ew-resize hover:bg-white/40 rounded-r-md z-30"
+                                                                    onMouseDown={(e) => handleDragStart(e, item, "resize-end")}
+                                                                />
+
+                                                                {/* Dependency connection handle */}
+                                                                <div
+                                                                    className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-5 w-5 rounded-full border border-indigo-300 bg-white/90 text-indigo-600 cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                                                    onMouseDown={(e) => handleDepDragStart(e, item)}
+                                                                    title="Drag to create dependency"
+                                                                >
+                                                                    <Link2 className="h-3 w-3" />
+                                                                </div>
                                                             </div>
-                                                        </div>
                                                         </>
                                                     ) : item.type === "group" ? (
                                                         <div className="relative h-6 rounded-md overflow-hidden bg-slate-400/40 border border-slate-400/60 shadow-sm hover:shadow-md cursor-grab active:cursor-grabbing">
@@ -1077,11 +1226,11 @@ export default function InteractiveGanttChart({
                                                                 </div>
                                                             )}
                                                         </div>
-                                                   ) : (
+                                                    ) : (
                                                         /* SUBTASK bar */
                                                         <div className="relative h-3.5 rounded-sm bg-emerald-500/80 shadow-sm">
                                                             <div className="absolute inset-y-0 left-0 bg-emerald-700/30 pointer-events-none"
-                                                                 style={{ width: `${item.progress}%` }} />
+                                                                style={{ width: `${item.progress}%` }} />
                                                             {layout.barWidth > 30 && (
                                                                 <span className="relative z-10 flex items-center h-full px-1.5 text-[10px] font-medium text-white truncate pointer-events-none">
                                                                     {item.name}
@@ -1089,13 +1238,11 @@ export default function InteractiveGanttChart({
                                                             )}
                                                             {/* Resize handles */}
                                                             <div
-                                                            className="absolute left-1 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-1-md z-30 "
-                                                            onMouseDown={(e) => handleDragStart(e, item, "resize-start")}/>
+                                                                className="absolute left-1 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-1-md z-30 "
+                                                                onMouseDown={(e) => handleDragStart(e, item, "resize-start")} />
                                                             <div
-                                                            className="absolute left-1 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-1-md z-30 "
-                                                            onMouseDown={(e) => handleDragStart(e, item, "resize-end")}/>
-                                                                 
-                                                            
+                                                                className="absolute left-1 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-1-md z-30 "
+                                                                onMouseDown={(e) => handleDragStart(e, item, "resize-end")} />
                                                         </div>
                                                     )}
                                                 </div>
@@ -1151,43 +1298,35 @@ export default function InteractiveGanttChart({
                                     const x1 = predLayout.barLeft + predLayout.barWidth + 4;
                                     const x2 = succLayout.barLeft - 2;
 
-                                    // --- UPDATE THIS VERTICAL CALCULATION BLOCK ---
-                                    // 1. Base middle line of the row
-                                    const rowCenter = ROW_HEIGHT / 2; 
-
-                                    // 2. Adjust this number to shift the lines down. 
-                                    // Try 6 or 8 pixels to compensate for the text label pushing the bar down.
-                                    const ALIGNMENT_OFFSET = 12; 
+                                    const rowCenter = ROW_HEIGHT / 2;
+                                    const ALIGNMENT_OFFSET = 12;
 
                                     const y1 = (predRowIndex * ROW_HEIGHT) + rowCenter + ALIGNMENT_OFFSET;
                                     const y2 = (succRowIndex * ROW_HEIGHT) + rowCenter + ALIGNMENT_OFFSET;
-                                    // ----------------------------------------------
 
-                                    const BUFFER = 12; 
-                                   
+                                    const BUFFER = 12;
+
                                     let path = '';
-                                                                    
+
                                     if (x2 < x1 + BUFFER) {
                                         // Backtrack case: Successor starts before Predecessor finishes
-                                        // Route cleanly within the whitespace buffer between rows
                                         const midY = (y1 + y2) / 2;
                                         path = `M ${x1} ${y1} ` +
-                                               `L ${x1 + BUFFER} ${y1} ` +
-                                               `L ${x1 + BUFFER} ${midY} ` +
-                                               `L ${x2 - BUFFER} ${midY} ` +
-                                               `L ${x2 - BUFFER} ${y2} ` +
-                                               `L ${x2} ${y2}`;
+                                            `L ${x1 + BUFFER} ${y1} ` +
+                                            `L ${x1 + BUFFER} ${midY} ` +
+                                            `L ${x2 - BUFFER} ${midY} ` +
+                                            `L ${x2 - BUFFER} ${y2} ` +
+                                            `L ${x2} ${y2}`;
                                     } else {
-                                        // Forward case: Drops right down after clearing the Predecessor bar body
+                                        // Forward case
                                         path = `M ${x1} ${y1} L ${x1 + BUFFER} ${y1} L ${x1 + BUFFER} ${y2} L ${x2} ${y2}`;
                                     }
-
 
                                     return (
                                         <g
                                             key={dep.id}
                                             onClick={(e) => { e.stopPropagation(); removeDependency(dep); }}
-                                            onMouseEnter={() => (deleteDepHoverRef.current = true)} // optional
+                                            onMouseEnter={() => (deleteDepHoverRef.current = true)}
                                             className="cursor-pointer"
                                         >
                                             <path
@@ -1214,12 +1353,39 @@ export default function InteractiveGanttChart({
             </TooltipProvider>
 
             {/* Dependency drag preview line */}
-            {depPreview && (
-                <div
-                    className="fixed pointer-events-none z-50"
-                    style={{ left: depPreview.x, top: depPreview.y }}
-                >
-                    <div className="w-3 h-3 -ml-1.5 -mt-1.5 rounded-full bg-indigo-600 border-2 border-white shadow-md" />
+            {depPreview && depPreview.startX !== undefined && depPreview.startY !== undefined && (
+                <div className="fixed inset-0 pointer-events-none z-50">
+                    <svg className="w-full h-full overflow-visible">
+                        {(() => {
+                            const x1 = depPreview.startX;
+                            const y1 = depPreview.startY;
+                            const x2 = depPreview.x;
+                            const y2 = depPreview.y;
+
+                            const midX = (x1 + x2) / 2;
+                            const previewPath = `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${y2} L ${x2} ${y2}`;
+
+                            return (
+                                <>
+                                    <path
+                                        d={previewPath}
+                                        fill="none"
+                                        stroke="#4f46e5"
+                                        strokeWidth={2}
+                                        strokeDasharray="4 4"
+                                    />
+                                    <circle
+                                        cx={x2}
+                                        cy={y2}
+                                        r={5}
+                                        fill="#4f46e5"
+                                        stroke="white"
+                                        strokeWidth={2}
+                                    />
+                                </>
+                            );
+                        })()}
+                    </svg>
                 </div>
             )}
         </div>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ArrowLeft } from 'lucide-react';
 import { FormEvent, useState } from 'react';
 
@@ -41,7 +42,9 @@ export default function CreateWorkItem() {
     const [assigneeId, setAssigneeId] = useState('');
     const [priority, setPriority] = useState('');
     const [progress, setProgress] = useState('0');
+    const [startDate, setStartDate] = useState('');
     const [dueDate, setDueDate] = useState('');
+    const [collaborators, setCollaborators] = useState<number[]>([]);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
@@ -64,7 +67,9 @@ export default function CreateWorkItem() {
             assignee_id: assigneeId,
             priority,
             progress: Number(progress),
-            due_date: dueDate,
+                        start_date: startDate || null,
+                        due_date: dueDate,
+            
         }, {
             onError: (errs) => {
                 setErrors(errs);
@@ -203,6 +208,17 @@ export default function CreateWorkItem() {
                                     {errors.progress && <p className="text-sm text-red-600">{errors.progress}</p>}
                                 </div>
 
+                                {/* Start Date  */}
+                                <div className=' space-y-2'>
+                                    <Label htmlFor="start_date">Start Date</Label>
+                                    <Input
+                                        id="start_date"
+                                        type="date"
+                                        value={startDate}
+                                        onChange={(e) => setStartDate(e.target.value)}/>
+                                <div/>
+                                {errors.start_date && <p className='text-sm text-red-600'>{errors.start_date}</p>}
+                                </div>
                                 {/* Due Date */}
                                 <div className="space-y-2">
                                     <Label htmlFor="due_date">Due Date</Label>

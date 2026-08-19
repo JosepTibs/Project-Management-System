@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Plus, Search, Pencil, Trash2, ArrowLeft, CheckSquare, Square } from 'lucide-react';
+import WorkItemSheet, { type EditWorkItemData } from '@/components/work-items/work-item-sheet';
 import { useState, useMemo } from 'react';
 
 interface Status {
@@ -32,6 +33,11 @@ interface WorkItemData {
     priority: string;
     due_date: string;
     progress: number;
+    status_id: number;
+    group_id: number;
+    assignee_id: number;
+    start_date: string | null;
+    collaborators: number[];
     status: Status | null;
     group: Group | null;
     assignee: Member | null;
@@ -39,7 +45,7 @@ interface WorkItemData {
 
 interface WorkItemsPageProps extends Record<string, unknown> {
     workItems: WorkItemData[];
-    project: { id: number; name: string };
+    project: { id: number; name: string; item_prefix: string };
     filters: {
         statuses: Status[];
         groups: Group[];
@@ -60,6 +66,9 @@ function getPriorityVariant(priority: string) {
 
 export default function WorkItemsIndex() {
     const { workItems, project, filters } = usePage<WorkItemsPageProps>().props;
+    const [sheetOpen, setSheetOpen] = useState(false);
+    const [sheetMode, setSheetMode] = useState<'create' | 'edit'>('create');
+    const [editingWorkItem, setEditingWorkItem] = useState<WorkItemData | null>(null);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [groupFilter, setGroupFilter] = useState('');
@@ -138,12 +147,10 @@ export default function WorkItemsIndex() {
                     </Link>
                     <h1 className="text-2xl font-bold">{project.name} — Work Items</h1>
                     <div className="ml-auto">
-                        <Link href={`/projects/${project.id}/work-items/create`}>
-                            <Button>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add Work Item
-                            </Button>
-                        </Link>
+                        <Button onClick={() => { setSheetMode('create'); setEditingWorkItem(null); setSheetOpen(true); }}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Work Item
+                        </Button>
                     </div>
                 </div>
 
@@ -313,11 +320,14 @@ export default function WorkItemsIndex() {
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="flex justify-end gap-2">
-                                                        <Link href={`/projects/${project.id}/work-items/${item.id}/edit`}>
-                                                            <Button variant="outline" size="sm" title="Edit">
-                                                                <Pencil className="h-4 w-4" />
-                                                            </Button>
-                                                        </Link>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            title="Edit"
+                                                            onClick={() => { setEditingWorkItem(item); setSheetMode('edit'); setSheetOpen(true); }}
+                                                        >
+                                                            <Pencil className="h-4 w-4" />
+                                                        </Button>
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -344,6 +354,19 @@ export default function WorkItemsIndex() {
                     </CardContent>
                 </Card>
             </div>
+
+            <WorkItemSheet
+                open={sheetOpen}
+                onOpenChange={setSheetOpen}
+                mode={sheetMode}
+                project={{ id: project.id, item_prefix: project.item_prefix }}
+                members={filters.members}
+                statuses={filters.statuses}
+                groups={filters.groups}
+                workItemId={editingWorkItem?.id}
+                initialWorkItem={editingWorkItem ?? undefined}
+                onSuccess={() => setSheetOpen(false)}
+            />
         </AppLayout>
     );
 }

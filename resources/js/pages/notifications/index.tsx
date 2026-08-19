@@ -4,6 +4,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Bell, CheckCheck, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/api';
 import { useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -66,7 +67,7 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
 
     async function markAsRead(id: string) {
         try {
-            await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
+            await apiFetch(`/api/notifications/${id}/read`, { method: 'POST' });
             setItems(prev =>
                 prev.map(n => n.id === id ? { ...n, is_unread: false, read_at: new Date().toISOString() } : n)
             );
@@ -77,7 +78,7 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
 
     async function markAllAsRead() {
         try {
-            await fetch('/api/notifications/mark-all-read', { method: 'POST' });
+            await apiFetch('/api/notifications/mark-all-read', { method: 'POST' });
             setItems(prev => prev.map(n => ({ ...n, is_unread: false, read_at: new Date().toISOString() })));
         } catch (e) {
             console.error('Failed to mark all as read', e);

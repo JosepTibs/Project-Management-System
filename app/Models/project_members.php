@@ -20,6 +20,7 @@ class project_members extends Model
     protected $fillable = [
         'project_id',
         'user_id',
+        'role',
 
     ];
 

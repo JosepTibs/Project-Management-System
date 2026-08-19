@@ -11,7 +11,9 @@ use App\Models\work_item;
 use App\Models\work_item_groups;
 use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 /**
@@ -32,8 +34,11 @@ class WorkItemController extends Controller
             session(['work_item_back_to' => $previousUrl]);
         }
 
-        // Load related status, group, assignee, project, and attachments data
-        $workItem->load(['status', 'group', 'assignee', 'project', 'attachments.uploader']);
+        // Load related status, group, assignee, project, attachments data, and Collaborators
+        $workItem->load(['status', 'group', 'assignee', 'project', 'attachments.uploader', 'collaborators']);
+
+        // Load project members for the edit sheet filter options
+        $project->load('members.user');
 
         // Fetch and transform comments for display (note: similar logic to CommentsController for future refactoring)
         $comments = $workItem->comments()
@@ -95,6 +100,21 @@ class WorkItemController extends Controller
             'created_at' => $attachment->created_at?->diffForHumans(),
         ]);
 
+        // Fetch filter options for the edit sheet
+        $statuses = work_item_statuses::where('project_id', $project->id)
+            ->orderBy('order')
+            ->get(['id', 'name']);
+
+        $groups = work_item_groups::where('project_id', $project->id)
+            ->get(['id', 'name']);
+
+        $members = $project->members->map(function ($member) {
+            return [
+                'id' => $member->user->id,
+                'name' => $member->user->name,
+            ];
+        });
+
         return Inertia::render('work-items/show', [
             'backUrl' => session('work_item_back_to', route('projects.work-items.index', $project->id)),
             'workItems' => [
@@ -104,13 +124,23 @@ class WorkItemController extends Controller
                 'priority' => $workItem->priority,
                 'due_date' => $workItem->due_date->format('Y-m-d'),
                 'progress' => $workItem->progress ?? 0,
+                'status_id' => $workItem->status_id,
+                'group_id' => $workItem->group_id,
+                'assignee_id' => $workItem->assignee_id,
+                'start_date' => $workItem->start_date?->format('Y-m-d'),
+                'collaborators' => $workItem->collaborators()->pluck('user_id'),
                 'status' => $workItem->status ? ['id' => $workItem->status->id, 'name' => $workItem->status->name] : null,
                 'group' => $workItem->group ? ['id' => $workItem->group->id, 'name' => $workItem->group->name] : null,
                 'assignee' => $workItem->assignee ? ['id' => $workItem->assignee->id, 'name' => $workItem->assignee->name] : null,
-                'project' => $workItem->project ? ['id' => $workItem->project->id, 'name' => $workItem->project->name] : null,
+                'project' => $workItem->project ? ['id' => $workItem->project->id, 'name' => $workItem->project->name, 'item_prefix' => $workItem->project->item_prefix] : null,
             ],
             'attachments' => $attachments,
             'comments' => $comments,
+            'filters' => [
+                'statuses' => $statuses,
+                'groups' => $groups,
+                'members' => $members,
+            ],
         ]);
     }
 
@@ -188,6 +218,11 @@ class WorkItemController extends Controller
                     'priority' => $item->priority,
                     'due_date' => $item->due_date->format('Y-m-d'),
                     'progress' => $item->progress ?? 0,
+                    'status_id' => $item->status_id,
+                    'group_id' => $item->group_id,
+                    'assignee_id' => $item->assignee_id,
+                    'start_date' => $item->start_date?->format('Y-m-d'),
+                    'collaborators' => $item->collaborators()->pluck('user_id'),
                     'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
                     'group' => $item->group ? ['id' => $item->group->id, 'name' => $item->group->name] : null,
                     'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
@@ -211,7 +246,7 @@ class WorkItemController extends Controller
 
         return Inertia::render('work-items/index', [
             'workItems' => $workItems,
-            'project' => ['id' => $project->id, 'name' => $project->name],
+            'project' => ['id' => $project->id, 'name' => $project->name, 'item_prefix' => $project->item_prefix],
             'filters' => [
                 'statuses' => $statuses,
                 'groups' => $groups,
@@ -262,15 +297,21 @@ class WorkItemController extends Controller
             'status_id' => 'required|exists:work_item_statuses,id',
             'group_id' => 'required|exists:work_item_groups,id',
             'assignee_id' => 'required|exists:users,id',
+            'collaborators' => 'nullable|array',
+            'collaborators.*' => 'integer',
             'priority' => 'required|in:low,medium,high,critical',
             'progress' => 'nullable|integer|min:0|max:100',
+            'start_date' => 'nullable|date',
             'due_date' => 'required|date',
         ]);
+
+        $validated = $this->applyScheduleConstraint($request, $project, $validated);
 
         $validated['project_id'] = $project->id;
 
         $workItem = work_item::create($validated);
 
+        $workItem->collaborators()->attach($this->validCollaboratorIds($request, $project, $validated['assignee_id'] ?? null));
         // Dispatch assignment event if the work item has an assignee
         if ($workItem->assignee) {
             WorkItemAssignedEvent::dispatch($workItem, $workItem->assignee, auth()->user()->name);
@@ -315,7 +356,9 @@ class WorkItemController extends Controller
                 'assignee_id' => $workItem->assignee_id,
                 'priority' => $workItem->priority,
                 'progress' => $workItem->progress ?? 0,
+                'start_date' => $workItem->start_date?->format('Y-m-d'),
                 'due_date' => $workItem->due_date->format('Y-m-d'),
+                'collaborators' => $workItem->collaborators()->pluck('user_id'),
             ],
             'statuses' => $statuses,
             'groups' => $groups,
@@ -341,14 +384,18 @@ class WorkItemController extends Controller
             'assignee_id' => 'required|exists:users,id',
             'priority' => 'required|in:low,medium,high,critical',
             'progress' => 'nullable|integer|min:0|max:100',
+            'start_date' => 'nullable|date',
             'due_date' => 'required|date',
         ]);
+        $validated = $this->applyScheduleConstraint($request, $project, $validated);
         // Store old values to detect changes for event dispatching
         $oldAssigneeId = $workItem->assignee_id;
         $oldStatusName = $workItem->status->name ?? 'Unknown';
 
         $workItem->update($validated);
         $workItem->refresh();
+
+        $workItem->collaborators()->sync($this->validCollaboratorIds($request, $project, $workItem->assignee_id));
 
         // Dispatch assignment event if the assignee changed
         if ($workItem->assignee_id && $workItem->assignee_id != $oldAssigneeId) {
@@ -361,15 +408,11 @@ class WorkItemController extends Controller
         }
 
         // Redirect back to the page the user came from (stored when the edit form was loaded)
-        $returnTo = session()->pull('work_item_return_to');
-        $fallback = route('projects.work-items.index', $project->id);
+       
+            return redirect()->back()->with('success', 'Work item updated successfully.');
+        
 
-        // Guard: don't redirect back to the edit form itself
-        if ($returnTo && ! str_contains($returnTo, '/edit')) {
-            return redirect($returnTo)->with('success', 'Work item updated successfully.');
-        }
-
-        return redirect($fallback)->with('success', 'Work item updated successfully.');
+        
     }
 
     /**
@@ -453,4 +496,66 @@ class WorkItemController extends Controller
             ->back(fallback: route('work-items.global'))
             ->with('success', 'Work item status updated.');
     }
-}
+
+    /**
+     * Validate that a work item's dates fall within the project's schedule window.
+     *
+     * When the parent project defines a start/end date, work items must not be
+     * scheduled outside that range. The check is skipped when the project has no
+     * date constraints set.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function applyScheduleConstraint(Request $request, projects $project, array $validated): array
+    {
+        if (! $project->start_date && ! $project->end_date) {
+            return $validated;
+        }
+
+        $start = $validated['start_date'] ?? null;
+        $due = $validated['due_date'] ?? null;
+
+        $errors = [];
+
+        if ($start) {
+            $startDate = Carbon::parse($start);
+            if ($project->start_date && $startDate->lt($project->start_date->startOfDay())) {
+                $errors['start_date'] = "Start date cannot be before the project start date ({$project->start_date->format('Y-m-d')}).";
+            }
+            if ($project->end_date && $startDate->gt($project->end_date->endOfDay())) {
+                $errors['start_date'] = "Start date cannot be after the project end date ({$project->end_date->format('Y-m-d')}).";
+            }
+        }
+
+        if ($due) {
+            $dueDate = Carbon::parse($due);
+            if ($project->start_date && $dueDate->lt($project->start_date->startOfDay())) {
+                $errors['due_date'] = "Due date cannot be before the project start date ({$project->start_date->format('Y-m-d')}).";
+            }
+            if ($project->end_date && $dueDate->gt($project->end_date->endOfDay())) {
+                $errors['due_date'] = "Due date cannot be after the project end date ({$project->end_date->format('Y-m-d')}).";
+            }
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages($errors);
+        }
+
+        return $validated;
+    }
+
+    private function validCollaboratorIds(Request $request, projects $project, $assigneeId): array
+    {
+        $ids = $request->input('collaborators', []);
+        $ids = array_filter(array_map('intval', (array) $ids));
+
+        $memberIds = project_members::where('project_id', $project->id)
+        ->pluck('user_id')->all();
+
+        $ids = array_values(array_intersect($ids, $memberIds));
+
+        return array_values(array_filter($ids, fn($id) => $id !== (int) $assigneeId));
+    }
+
+    }

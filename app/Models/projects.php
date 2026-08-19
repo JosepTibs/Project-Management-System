@@ -20,11 +20,24 @@ class projects extends Model
     /**
      * The attributes that are mass assignable.
      */
-    protected $fillable = [
+        protected $fillable = [
         'name',
         'created_by',
         'description',
         'item_prefix',
+        'start_date',
+        'end_date',
+        'status_id',
+    ];
+
+    /**
+     * The attributes that should be cast to native types.
+     */
+    protected $casts = [
+        'start_date' => 'date',
+        'end_date' => 'date',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     /**
@@ -65,6 +78,22 @@ class projects extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * Get the current lifecycle status of this project.
+     */
+    public function status(): BelongsTo
+    {
+        return $this->belongsTo(project_statuses::class, 'status_id');
+    }
+
+    /**
+     * Get the configurable lifecycle statuses for this project.
+     */
+    public function statuses(): HasMany
+    {
+        return $this->hasMany(project_statuses::class, 'project_id');
     }
 
     /**

@@ -1,4 +1,5 @@
 import { Head, Link, usePage, router } from '@inertiajs/react';
+import { useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem, type User } from '@/types';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +9,7 @@ import { ArrowLeft, Calendar, User as UserIcon, Flag, Paperclip, Pencil, Trash2 
 import CommentSection from '@/components/comments/comment-section';
 import FileAttachmentUploader from '@/components/attachments/file-attachment-uploader';
 import FileAttachmentList from '@/components/attachments/file-attachment-list';
+import WorkItemSheet, { type EditWorkItemData, type Member, type WorkItemSheetOption } from '@/components/work-items/work-item-sheet';
 
 interface Status {
     id: number;
@@ -27,6 +29,7 @@ interface Assignee {
 interface Project {
     id: number;
     name: string;
+    item_prefix: string;
 }
 
 interface AttachmentData {
@@ -47,6 +50,11 @@ interface WorkItemData {
     priority: string;
     due_date: string;
     progress: number;
+    status_id: number;
+    group_id: number;
+    assignee_id: number;
+    start_date: string | null;
+    collaborators: number[];
     status: Status | null;
     group: Group | null;
     assignee: Assignee | null;
@@ -74,6 +82,11 @@ interface ShowPageProps extends Record<string, unknown> {
     attachments: AttachmentData[];
     comments: CommentData[];
     auth: { user: User };
+    filters: {
+        statuses: WorkItemSheetOption[];
+        groups: WorkItemSheetOption[];
+        members: Member[];
+    };
 }
 
 function getPriorityVariant(priority: string) {
@@ -87,7 +100,22 @@ function getPriorityVariant(priority: string) {
 }
 
 export default function WorkItemShow() {
-    const { backUrl, workItems: workItem, attachments, comments, auth } = usePage<ShowPageProps>().props;
+    const { backUrl, workItems: workItem, attachments, comments, auth, filters } = usePage<ShowPageProps>().props;
+    const [sheetOpen, setSheetOpen] = useState(false);
+
+    const initialWorkItem: EditWorkItemData = {
+        id: workItem.id,
+        title: workItem.title,
+        description: workItem.description,
+        status_id: workItem.status_id ?? workItem.status?.id ?? '',
+        group_id: workItem.group_id ?? workItem.group?.id ?? '',
+        assignee_id: workItem.assignee_id ?? workItem.assignee?.id ?? '',
+        collaborators: workItem.collaborators ?? [],
+        priority: workItem.priority,
+        progress: workItem.progress,
+        start_date: workItem.start_date ?? null,
+        due_date: workItem.due_date,
+    };
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Projects', href: '/projects' },
@@ -109,12 +137,14 @@ export default function WorkItemShow() {
                     </Link>
                     <h1 className="text-2xl font-bold">{workItem.title}</h1>
                     <div className="ml-auto flex items-center gap-2">
-                        <Link href={`/projects/${workItem.project?.id}/work-items/${workItem.id}/edit`}>
-                            <Button variant="outline" size="sm">
-                                <Pencil className="mr-2 h-4 w-4" />
-                                Edit
-                            </Button>
-                        </Link>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setSheetOpen(true)}
+                        >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                        </Button>
                         <Button
                             variant="outline"
                             size="sm"
@@ -220,6 +250,19 @@ export default function WorkItemShow() {
                     authUserId={auth.user.id}
                 />
             </div>
+
+            <WorkItemSheet
+                open={sheetOpen}
+                onOpenChange={setSheetOpen}
+                mode="edit"
+                project={{ id: workItem.project!.id, item_prefix: workItem.project!.item_prefix }}
+                members={filters.members}
+                statuses={filters.statuses}
+                groups={filters.groups}
+                workItemId={workItem.id}
+                initialWorkItem={initialWorkItem}
+                onSuccess={() => setSheetOpen(false)}
+            />
         </AppLayout>
     );
 }
