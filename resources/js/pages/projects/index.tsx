@@ -32,10 +32,12 @@ export interface ProjectItem {
     members_count: number;
     work_items_count: number;
     completion_percentage: number;
+    archived?: boolean;
 }
 
 interface ProjectsPageProps extends Record<string, unknown> {
     projects: ProjectItem[];
+    archived?: boolean;
     statuses: StatusOption[];
     allUsers: UserOption[];
     workItemStatuses: WorkItemStatusOption[];
@@ -51,7 +53,7 @@ interface ProjectsPageProps extends Record<string, unknown> {
 }
 
 export default function ProjectsIndex() {
-    const { projects, statuses, allUsers, workItemStatuses, auth } = usePage<ProjectsPageProps>().props;
+    const { projects, archived = false, statuses, allUsers, workItemStatuses, auth } = usePage<ProjectsPageProps>().props;
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<'table' | 'cards' | 'grouped'>('table');
     const [createOpen, setCreateOpen] = useState(false);
@@ -106,6 +108,18 @@ export default function ProjectsIndex() {
         }
     }
 
+    function handleArchive(projectId: number) {
+        router.post(`/projects/${projectId}/archive`, {}, { preserveScroll: true });
+    }
+
+    function handleRestore(projectId: number) {
+        router.post(`/projects/${projectId}/restore`, {}, { preserveScroll: true });
+    }
+
+    function setArchivedView(archived: boolean) {
+        router.get('/projects', { project_archived: archived ? '1' : '0' }, { preserveState: true, replace: true });
+    }
+
     async function handleEditClick(projectId: number) {
         setEditLoading(true);
         try {
@@ -131,6 +145,13 @@ export default function ProjectsIndex() {
                     <h1 className="text-2xl font-bold">Projects</h1>
                     <div className="flex items-center gap-2">
                         <ViewToggle viewMode={viewMode} onViewChange={toggleView} />
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setArchivedView(!archived)}
+                        >
+                            {archived ? 'View Active' : 'View Archived'}
+                        </Button>
                         {canManageProjects && (
                             <Button onClick={() => setCreateOpen(true)}>
                                 <Plus className="mr-2 h-4 w-4" />
@@ -153,9 +174,9 @@ export default function ProjectsIndex() {
 
                 {/* View Content */}
                 {viewMode === 'table' ? (
-                    <ProjectsTableView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} />
+                    <ProjectsTableView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} onArchive={handleArchive} onRestore={handleRestore} />
                 ) : (
-                    <ProjectsCardView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} />
+                    <ProjectsCardView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} onArchive={handleArchive} onRestore={handleRestore} />
                 )}
             </div>
 

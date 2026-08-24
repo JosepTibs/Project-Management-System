@@ -28,6 +28,7 @@ class projects extends Model
         'start_date',
         'end_date',
         'status_id',
+        'archived_at',
     ];
 
     /**
@@ -36,6 +37,7 @@ class projects extends Model
     protected $casts = [
         'start_date' => 'date',
         'end_date' => 'date',
+        'archived_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -94,6 +96,67 @@ class projects extends Model
     public function statuses(): HasMany
     {
         return $this->hasMany(project_statuses::class, 'project_id');
+    }
+
+    /**
+     * Scope query to only archived projects.
+     */
+    public function scopeArchived($query)
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
+    /**
+     * Scope query to only active (non-archived) projects.
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    /**
+     * Determine whether this project may be archived.
+     *
+     * A project can be archived only when it has no open work items and no
+     * open milestones, so archived projects are never hiding active work.
+     */
+    public function isArchiveable(): bool
+    {
+        if ($this->archived_at !== null) {
+            return false;
+        }
+
+        $hasOpenWorkItems = $this->workItems()
+            ->whereNull('completed_at')
+            ->exists();
+
+        if ($hasOpenWorkItems) {
+            return false;
+        }
+
+        return ! $this->milestones()->whereNull('completed_at')->exists();
+    }
+
+    /**
+     * Archive this project and cascade the archive to all of its work items.
+     *
+     * Cascading ensures a project's tasks remain consistent once their parent
+     * is archived. Restoring the project does not automatically restore its
+     * work items; those are restored individually.
+     */
+    public function archive(): void
+    {
+        $this->update(['archived_at' => now()]);
+
+        $this->workItems()->update(['archived_at' => now()]);
+    }
+
+    /**
+     * Restore this project from the archive.
+     */
+    public function unarchive(): void
+    {
+        $this->update(['archived_at' => null]);
     }
 
     /**

@@ -1,7 +1,7 @@
-import { Link } from '@inertiajs/react';
+﻿import { Link } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Pencil, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Trash2, Archive, ArchiveRestore } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import type { ProjectItem } from '@/pages/projects/index';
 
@@ -10,9 +10,11 @@ interface ProjectsTableViewProps {
     onDelete: (projectId: number, projectName: string) => void;
     onEdit?: (projectId: number) => void;
     editLoading?: boolean;
+    onArchive?: (projectId: number) => void;
+    onRestore?: (projectId: number) => void;
 }
 
-export function ProjectsTableView({ projects, onDelete, onEdit, editLoading }: ProjectsTableViewProps) {
+export function ProjectsTableView({ projects, onDelete, onEdit, editLoading, onArchive, onRestore }: ProjectsTableViewProps) {
     return (
         <Card>
             <CardHeader className="p-0">
@@ -39,7 +41,7 @@ export function ProjectsTableView({ projects, onDelete, onEdit, editLoading }: P
                                         </Link>
                                     </TableCell>
                                     <TableCell className="text-muted-foreground max-w-xs truncate">
-                                        {project.description || '�'}
+                                        {project.description || 'ï¿½'}
                                     </TableCell>
                                     <TableCell>
                                         <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
@@ -80,6 +82,25 @@ export function ProjectsTableView({ projects, onDelete, onEdit, editLoading }: P
                                             >
                                                 <Pencil className="h-4 w-4" />
                                             </Button>
+                                            {project.archived ? (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    title="Restore"
+                                                    onClick={() => onRestore?.(project.id)}
+                                                >
+                                                    <ArchiveRestore className="h-4 w-4" />
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    title="Archive"
+                                                    onClick={() => onArchive?.(project.id)}
+                                                >
+                                                    <Archive className="h-4 w-4" />
+                                                </Button>
+                                            )}
                                             <Button
                                                 variant="ghost"
                                                 size="sm"

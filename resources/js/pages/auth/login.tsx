@@ -31,6 +31,9 @@ export default function Login({ status, canResetPassword }: LoginProps) {
 
     const [showPassword, setShowPassword] = useState(false);
 
+    const inputClasses =
+        'border-[#131F42] bg-[#131F42] text-[#F4F6F9] placeholder:text-[#8C9A9E] focus:border-[#20E2CD] focus:ring-[#20E2CD] focus:ring-offset-0';
+
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
         post(route('login'), {
@@ -45,7 +48,9 @@ export default function Login({ status, canResetPassword }: LoginProps) {
             <form className="flex flex-col gap-6" onSubmit={submit}>
                 <div className="grid gap-6">
                     <div className="grid gap-2">
-                        <Label htmlFor="email">Email address</Label>
+                        <Label htmlFor="email" className="text-[#F4F6F9]">
+                            Email address
+                        </Label>
                         <Input
                             id="email"
                             type="email"
@@ -56,7 +61,7 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                             value={data.email}
                             onChange={(e) => setData('email', e.target.value)}
                             placeholder="email@example.com"
-                            className="border-[#131F42] bg-[#131F42] text-[#F4F6F9] placeholder:text-[#8C9A9E] focus:border-[#20E2CD] focus:ring-[#20E2CD] focus:ring-offset-0"
+                            className={inputClasses}
                         />
                         <InputError message={errors.email} />
                     </div>
@@ -72,35 +77,34 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                             
                         </div>
                         <div className="relative w-full">
-                        <Input
-                            id="password"
-                            required
-                            type={showPassword ? 'text' : 'password'}
-                            tabIndex={2}
-                            autoComplete="current-password"
-                            value={data.password}
-                            onChange={(e) => setData('password', e.target.value)}
-                            placeholder="Password"
-                            className='pr-10'
-
-                            
-                        />
-                        
-                       
-                        <button
-                        type = 'button'
-                        onClick={()=> setShowPassword(!showPassword)}
-                        className = "absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                        >
-                         {showPassword ? <EyeOff className='h-5 w-5'/> : <Eye className='h-5 w-5'/>}  
-                        </button>
+                            <Input
+                                id="password"
+                                required
+                                type={showPassword ? 'text' : 'password'}
+                                tabIndex={2}
+                                autoComplete="current-password"
+                                value={data.password}
+                                onChange={(e) => setData('password', e.target.value)}
+                                placeholder="Password"
+                                className={`pr-10 ${inputClasses}`}
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C9A9E] hover:text-[#F4F6F9]"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            </button>
                         </div>
                         <InputError message={errors.password} />
                     </div>
 
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center gap-3">
                         <Checkbox id="remember" name="remember" tabIndex={3} />
-                        <Label htmlFor="remember">Remember me</Label>
+                        <Label htmlFor="remember" className="text-[#F4F6F9]">
+                            Remember me
+                        </Label>
                     </div>
 
                     <Button type="submit" className="mt-4 w-full" tabIndex={4} disabled={processing}>
@@ -109,9 +113,9 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                     </Button>
                 </div>
 
-                <div className="text-muted-foreground text-center text-sm">
+                <div className="text-center text-sm text-[#8C9A9E]">
                     Don't have an account?{' '}
-                    <TextLink href={route('register')} tabIndex={5}>
+                    <TextLink href={route('register')} tabIndex={5} className="text-[#20E2CD]">
                         Sign up
                     </TextLink>
                 </div>

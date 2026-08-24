@@ -6,13 +6,15 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ArrowLeft, Users, FileText, Settings, Target, ChevronDown, BarChart3, Columns3, Calendar } from 'lucide-react';
+import { ArrowLeft, Users, FileText, Settings, Target, ChevronDown, BarChart3, Columns3, Calendar, Paperclip } from 'lucide-react';
 import KanbanBoard from '@/components/kanban/kanban-board';
 import InteractiveGanttChart from '@/components/interactive-gantt-chart';
 import CalendarView from '@/components/calendar-view';
+import FileAttachmentList from '@/components/attachments/file-attachment-list';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 function getPriorityVariant(priority: string) {
@@ -25,7 +27,7 @@ function getPriorityVariant(priority: string) {
 }
 
 export default function ShowProject() {
-  const { project, setup, columns, statuses, workItems } = usePage<any>().props;
+  const { project, setup, columns, statuses, workItems, attachments } = usePage<any>().props;
   const [editOpen, setEditOpen] = useState(false);
 
   const breadcrumbs: BreadcrumbItem[] = [
@@ -84,6 +86,9 @@ export default function ShowProject() {
               </TabsTrigger>
               <TabsTrigger value="calendar" className="data-[state=active]:bg-muted">
                 <Calendar className="mr-1.5 h-3.5 w-3.5" /> Calendar
+              </TabsTrigger>
+              <TabsTrigger value="documents" className="data-[state=active]:bg-muted">
+                <Paperclip className="mr-1.5 h-3.5 w-3.5" /> Documents
               </TabsTrigger>
             </TabsList>
 
@@ -279,6 +284,61 @@ export default function ShowProject() {
                 milestones={project.milestones || []}
               />
             </div>
+          </TabsContent>
+
+          {/* Documents Tab */}
+          <TabsContent value="documents" className="pt-4">
+            {attachments && attachments.length > 0 ? (
+              <div className="space-y-4">
+                {/* Group attachments by work item */}
+                {Object.entries(
+                  attachments.reduce((acc: Record<string, any>, attachment: any) => {
+                    const key = String(attachment.work_item_id);
+                    if (!acc[key]) {
+                      acc[key] = {
+                        workItemId: attachment.work_item_id,
+                        workItemTitle: attachment.work_item_title,
+                        attachments: [],
+                      };
+                    }
+                    acc[key].attachments.push(attachment);
+                    return acc;
+                  }, {})
+                ).map(([key, group]: [string, any]) => (
+                  <Card key={key}>
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        <Link 
+                          href={`/projects/${project.id}/work-items/${group.workItemId}`}
+                          className="hover:underline text-primary"
+                        >
+                          {group.workItemTitle || `Work Item #${group.workItemId}`}
+                        </Link>
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FileAttachmentList 
+                        attachments={group.attachments} 
+                        authUserId={usePage<any>().props.auth?.user?.id} 
+                      />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Paperclip className="h-4 w-4" />
+                    Project Documents
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">No documents attached to this project.</p>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
         </Tabs>
 

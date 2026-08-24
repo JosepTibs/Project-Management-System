@@ -20,25 +20,28 @@ class DashboardController extends Controller
     {
         $user = Auth::user()?->load('roles');
 
-        // Total counts
+        // Total counts (active only; archived items are excluded from metrics)
         $totalUsers = User::count();
-        $totalProjects = projects::count();
-        $totalWorkItems = work_item::count();
-        $overdueWorkItems = work_item::where('due_date', '<', now())
+        $totalProjects = projects::notArchived()->count();
+        $totalWorkItems = work_item::notArchived()->count();
+        $archivedWorkItems = work_item::archived()->count();
+        $overdueWorkItems = work_item::notArchived()
+            ->where('due_date', '<', now())
             ->where('progress', '<', 100)
             ->count();
 
         // Work items by priority (schema enum includes 'critical')
-        $highPriority = work_item::where('priority', 'high')->count();
-        $mediumPriority = work_item::where('priority', 'medium')->count();
-        $lowPriority = work_item::where('priority', 'low')->count();
-        $criticalPriority = work_item::where('priority', 'critical')->count();
+        $highPriority = work_item::notArchived()->where('priority', 'high')->count();
+        $mediumPriority = work_item::notArchived()->where('priority', 'medium')->count();
+        $lowPriority = work_item::notArchived()->where('priority', 'low')->count();
+        $criticalPriority = work_item::notArchived()->where('priority', 'critical')->count();
 
         // Derived work-item health metrics
-        $avgCompletion = (int) round(work_item::avg('progress') ?? 0);
-        $completedWorkItems = work_item::where('progress', 100)->count();
-        $unassignedWorkItems = work_item::whereNull('assignee_id')->count();
-        $dueThisWeek = work_item::whereNotNull('due_date')
+        $avgCompletion = (int) round(work_item::notArchived()->avg('progress') ?? 0);
+        $completedWorkItems = work_item::notArchived()->where('progress', 100)->count();
+        $unassignedWorkItems = work_item::notArchived()->whereNull('assignee_id')->count();
+        $dueThisWeek = work_item::notArchived()
+            ->whereNotNull('due_date')
             ->where('due_date', '>=', now()->startOfDay())
             ->where('due_date', '<=', now()->endOfDay()->addDays(7))
             ->where('progress', '<', 100)
@@ -47,15 +50,19 @@ class DashboardController extends Controller
         // Users created within the last 7 days (replaces the hardcoded subtitle)
         $newUsersWeek = User::where('created_at', '>=', now()->subWeek())->count();
 
-        // Work items blocked by an unfinished predecessor
+        // Work items blocked by an unfinished predecessor (active only)
         $blockedWorkItems = DB::table('dependencies')
             ->join('work_items as pred', 'pred.id', '=', 'dependencies.predecessor_id')
+            ->join('work_items as succ', 'succ.id', '=', 'dependencies.successor_id')
+            ->whereNull('pred.archived_at')
+            ->whereNull('succ.archived_at')
             ->where('pred.progress', '<', 100)
             ->distinct()
-            ->count('dependencies.successor_id');
+            ->count('succ.id');
 
         // Workload: number of assigned work items per user (top contributors)
         $tasksPerUser = work_item::selectRaw('assignee_id, count(*) as total')
+            ->notArchived()
             ->whereNotNull('assignee_id')
             ->groupBy('assignee_id')
             ->orderByDesc('total')
@@ -86,16 +93,19 @@ class DashboardController extends Controller
             ->where('target_date', '>=', now()->startOfDay())
             ->count();
 
-        // Work items by status
-        $statuses = work_item_statuses::withCount('workItems')->get()->groupBy('name')->map(function ($group) {
+        // Work items by status (excludes archived items)
+        $statuses = work_item_statuses::withCount(['workItems' => function ($q) {
+            $q->notArchived();
+        }])->get()->groupBy('name')->map(function ($group) {
             return [
                 'name' => $group->first()->name,
                 'count' => $group->sum('work_items_count'),
             ];
         })->values();
 
-        // Recent work items (latest 5)
+        // Recent work items (latest 5, active only)
         $recentWorkItems = work_item::with(['project:id,name', 'status:id,name'])
+            ->notArchived()
             ->latest()
             ->take(5)
             ->get()
@@ -110,12 +120,16 @@ class DashboardController extends Controller
                 ];
             });
 
-        // Projects overview with member count and work item count
-        $projectsOverview = projects::withCount(['members', 'workItems'])
+        // Projects overview with member count and work item count (active only)
+        $projectsOverview = projects::notArchived()
+            ->withCount(['members', 'workItems' => function ($q) {
+                $q->whereNull('archived_at');
+            }])
             ->selectSub(function ($query) {
                 $query->selectRaw('ROUND(AVG(progress), 2)')
                     ->from('work_items')
-                    ->whereColumn('project_id', 'projects.id');
+                    ->whereColumn('project_id', 'projects.id')
+                    ->whereNull('archived_at');
             }, 'completion_percentage')
             ->get()
             ->map(function ($project) {
@@ -208,6 +222,32 @@ class DashboardController extends Controller
                 ];
             });
 
+        // Weekly timeline for the last 8 weeks: work items created vs completed.
+        // Created is bucketed by created_at; completed by the derived completed_at.
+        // Pre-existing items at 100% progress with a null completed_at are excluded
+        // from the completed series (their true completion date is unknown) rather
+        // than backfilled with a guessed date.
+        $timeline = [];
+        $weekStart = now()->startOfWeek();
+
+        for ($i = 7; $i >= 0; $i--) {
+            $start = $weekStart->copy()->subWeeks($i);
+            $end = $start->copy()->addWeeks(1);
+
+            $timeline[] = [
+                'week' => $start->format('M d'),
+                'created' => work_item::notArchived()
+                    ->where('created_at', '>=', $start)
+                    ->where('created_at', '<', $end)
+                    ->count(),
+                'completed' => work_item::notArchived()
+                    ->whereNotNull('completed_at')
+                    ->where('completed_at', '>=', $start)
+                    ->where('completed_at', '<', $end)
+                    ->count(),
+            ];
+        }
+
         return Inertia::render('dashboard', [
             'stats' => [
                 'total_users' => $totalUsers,
@@ -224,6 +264,7 @@ class DashboardController extends Controller
                 'due_this_week' => $dueThisWeek,
                 'new_users_week' => $newUsersWeek,
                 'blocked_work_items' => $blockedWorkItems,
+                'archived_work_items' => $archivedWorkItems,
             ],
             'statuses' => $statuses,
             'recent_work_items' => $recentWorkItems,
@@ -231,6 +272,7 @@ class DashboardController extends Controller
             'team_distribution' => $teamDistribution,
             'recent_activities' => $recentActivities,
             'tasks_per_user' => $tasksPerUser,
+            'timeline' => $timeline,
             'milestones_overview' => [
                 'total' => $totalMilestones,
                 'completed' => $completedMilestones,

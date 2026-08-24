@@ -172,6 +172,15 @@ class WorkItemController extends Controller
             $query->where('priority', $priority);
         }
 
+        // Archive filter: by default show active items only; pass archived=1 to list
+        // archived items (and archived=0 to force the active list explicitly).
+        $archived = $request->input('archived');
+        if ($archived === '1' || $archived === 'true') {
+            $query->archived();
+        } else {
+            $query->notArchived();
+        }
+
         $workItems = $query->orderBy('created_at', 'desc')->get()->map(function ($item) {
             return [
                 'id' => $item->id,
@@ -182,6 +191,7 @@ class WorkItemController extends Controller
                 'group' => $item->group ? ['id' => $item->group->id, 'name' => $item->group->name] : null,
                 'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
                 'project' => $item->project ? ['id' => $item->project->id, 'name' => $item->project->name] : null,
+                'archived' => $item->archived_at !== null,
             ];
         });
 
@@ -190,6 +200,7 @@ class WorkItemController extends Controller
 
         return Inertia::render('work-items/global-index', [
             'workItems' => $workItems,
+            'archived' => ($archived === '1' || $archived === 'true') ? true : false,
             'filters' => [
                 'projects' => $projects,
                 'statuses' => $statuses,
@@ -495,6 +506,42 @@ class WorkItemController extends Controller
         return redirect()
             ->back(fallback: route('work-items.global'))
             ->with('success', 'Work item status updated.');
+    }
+
+    /**
+     * Archive a completed work item (reversible).
+     *
+     * Only items that are fully complete (completed_at set) may be archived.
+     */
+    public function archive(work_item $workItem)
+    {
+        $this->authorize('work-item.archive', $workItem);
+
+        if (! $workItem->isArchiveable()) {
+            return redirect()
+                ->back(fallback: route('work-items.global'))
+                ->withErrors(['archive' => 'Only completed work items can be archived.']);
+        }
+
+        $workItem->archive();
+
+        return redirect()
+            ->back(fallback: route('work-items.global'))
+            ->with('success', 'Work item archived successfully.');
+    }
+
+    /**
+     * Restore a previously archived work item.
+     */
+    public function unarchive(work_item $workItem)
+    {
+        $this->authorize('work-item.archive', $workItem);
+
+        $workItem->unarchive();
+
+        return redirect()
+            ->back(fallback: route('work-items.global'))
+            ->with('success', 'Work item restored successfully.');
     }
 
     /**

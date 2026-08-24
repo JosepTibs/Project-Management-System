@@ -12,8 +12,6 @@ class WorkItemGroupSeeder extends Seeder
     public function run(): void
     {
         $projects = projects::all();
-        $today = now()->startOfDay();
-        $threeMonths = now()->addMonths(3);
 
         $groupData = [
             ['name' => 'Sprint 1', 'description' => 'Initial development sprint focusing on core features and setup.'],
@@ -27,14 +25,43 @@ class WorkItemGroupSeeder extends Seeder
         ];
 
         foreach ($projects as $project) {
-            $milestones = milestones::where('project_id', $project->id)->get();
-            $totalDuration = $today->diffInDays($threeMonths);
-            $groupDuration = (int) ceil($totalDuration / 8);
+            $milestones = milestones::where('project_id', $project->id)->orderBy('order')->get();
+
+            if ($milestones->isEmpty()) {
+                continue;
+            }
+
+            // Pre-compute which groups belong to which milestone
+            $groupsByMilestone = [];
+            foreach ($groupData as $index => $group) {
+                $milestoneIndex = $index % $milestones->count();
+                $groupsByMilestone[$milestoneIndex][] = $index;
+            }
 
             foreach ($groupData as $index => $group) {
-                $milestone = $milestones->get($index % $milestones->count());
-                $startDate = $today->copy()->addDays($index * $groupDuration);
+                $milestoneIndex = $index % $milestones->count();
+                $milestone = $milestones->get($milestoneIndex);
+
+                $milestoneStart = $milestone->start_date
+                    ? $milestone->start_date->copy()->startOfDay()
+                    : now()->startOfDay();
+                $milestoneEnd = $milestone->target_date
+                    ? $milestone->target_date->copy()->startOfDay()
+                    : now()->addMonths(3)->startOfDay();
+                $milestoneDuration = max(1, $milestoneStart->diffInDays($milestoneEnd));
+
+                $groupCount = count($groupsByMilestone[$milestoneIndex]);
+                $groupDuration = (int) ceil($milestoneDuration / $groupCount);
+
+                $positionInMilestone = array_search($index, $groupsByMilestone[$milestoneIndex]);
+
+                $startDate = $milestoneStart->copy()->addDays($positionInMilestone * $groupDuration);
                 $endDate = $startDate->copy()->addDays($groupDuration - 1);
+
+                // Clamp to milestone end date — never exceed milestone target_date
+                if ($endDate->greaterThan($milestoneEnd)) {
+                    $endDate = $milestoneEnd->copy();
+                }
 
                 work_item_groups::create([
                     'project_id' => $project->id,

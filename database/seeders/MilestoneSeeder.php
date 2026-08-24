@@ -11,8 +11,6 @@ class MilestoneSeeder extends Seeder
     public function run(): void
     {
         $projects = projects::all();
-        $today = now()->startOfDay();
-        $threeMonths = now()->addMonths(3);
 
         $milestoneTemplates = [
             [
@@ -38,12 +36,23 @@ class MilestoneSeeder extends Seeder
         ];
 
         foreach ($projects as $project) {
-            $projectDuration = $today->diffInDays($threeMonths);
+            $projectStart = $project->start_date
+                ? $project->start_date->copy()->startOfDay()
+                : now()->subMonth(6)->startOfDay();
+            $projectEnd = $project->end_date
+                ? $project->end_date->copy()->startOfDay()
+                : now()->addMonth(6)->startOfDay();
+            $projectDuration = $projectStart->diffInDays($projectEnd);
             $milestoneDuration = (int) ceil($projectDuration / 4);
 
             foreach ($milestoneTemplates as $index => $template) {
-                $startDate = $today->copy()->addDays($index * $milestoneDuration);
+                $startDate = $projectStart->copy()->addDays($index * $milestoneDuration);
                 $targetDate = $startDate->copy()->addDays($milestoneDuration - 1);
+
+                // Clamp to project end date — never exceed project end
+                if ($targetDate->greaterThan($projectEnd)) {
+                    $targetDate = $projectEnd->copy();
+                }
 
                 milestones::create([
                     'project_id' => $project->id,

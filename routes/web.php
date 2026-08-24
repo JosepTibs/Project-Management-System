@@ -27,6 +27,13 @@ Route::middleware(['auth'])->group(function () {
 
     Route::resource('projects', ProjectsController::class)->except(['create']);
     Route::resource('projects.work-items', WorkItemController::class);
+
+    // Archive / restore (non-destructive; reversible)
+    Route::post('projects/{project}/archive', [ProjectsController::class, 'archive'])->name('projects.archive');
+    Route::post('projects/{project}/restore', [ProjectsController::class, 'unarchive'])->name('projects.restore');
+    Route::post('work-items/{workItem}/archive', [WorkItemController::class, 'archive'])->name('work-items.archive');
+    Route::post('work-items/{workItem}/restore', [WorkItemController::class, 'unarchive'])->name('work-items.restore');
+
     Route::get('projects/{project}/kanban', [ProjectsController::class, 'kanban'])->name('projects.kanban');
     Route::get('projects/{project}/gantt', [GanttController::class, 'index'])->name('projects.gantt');
 

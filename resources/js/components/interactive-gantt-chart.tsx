@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
 import { router } from '@inertiajs/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Link2, Link2Off, ChevronRight, ChevronDown, Maximize2, Minimize2 } from 'lucide-react';
+import { Link2, Link2Off, ChevronRight, ChevronDown, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 
 interface WorkItem {
@@ -68,14 +68,61 @@ interface InteractiveGanttChartProps {
 }
 
 // NAME_WIDTH / INDENT_WIDTH stay fixed regardless of fullscreen.
-// BASE_DAY_WIDTH is used ONLY for date-range math (drag offset estimation)
-// so it never depends on totalDays — avoiding a circular dependency.
+// BASE_UNIT_WIDTH is used ONLY for date-range math (drag offset estimation)
+// so it never depends on totalUnits — avoiding a circular dependency.
 const NAME_WIDTH = 240;
+const COLLAPSED_NAME_WIDTH = 48;
 const INDENT_WIDTH = 20;
-const BASE_DAY_WIDTH = 28;
+const BASE_UNIT_WIDTH = 180;
+
+type ViewMode = "day" | "week" | "month" | "quarter" | "year";
+
+const VIEW_UNIT_WIDTH: Record<ViewMode, number> = {
+    day: 28,
+    week: 140,
+    month: 180,
+    quarter: 200,
+    year: 220,
+};
+
+// Average number of days in one period of each view. Used to convert a pixel
+// drag offset into individual days so dragging stays day-accurate in every
+// view (rather than snapping to the currently selected period granularity).
+const VIEW_DAYS_PER_PERIOD: Record<ViewMode, number> = {
+    day: 1,
+    week: 7,
+    month: 365.25 / 12,
+    quarter: 365.25 / 4,
+    year: 365.25,
+};
+
+// Bars never get narrower than this, so short tasks stay visible and
+// draggable even in quarter/year views.
+const MIN_BAR_WIDTH = 60;
+
+// Height of each bar type, kept as whole numbers so bars can be vertically
+// centered with integer-pixel tops (avoids sub-pixel clipping of rounded edges).
+function barHeightForType(type: TimelineItem["type"]): number {
+    switch (type) {
+        case "task":
+            return 28; // h-7
+        case "group":
+            return 24; // h-6
+        case "milestone":
+            return 16; // h-4 rotated diamond
+        default:
+            return 28;
+    }
+}
 
 function stripTime(date: Date) {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, days: number) {
+    const d = new Date(date);
+    d.setDate(d.getDate() + days);
+    return d;
 }
 
 function differenceInDays(a: Date, b: Date) {
@@ -85,19 +132,9 @@ function differenceInDays(a: Date, b: Date) {
     );
 }
 
-function addDays(date: Date, days: number) {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d;
-}
-
 function isWeekend(date: Date) {
     const day = date.getDay();
     return day === 0 || day === 6;
-}
-
-function formatDayNumber(date: Date) {
-    return date.getDate();
 }
 
 function formatDateShort(date: Date) {
@@ -126,32 +163,174 @@ function isToday(date: Date) {
     );
 }
 
-interface MonthGroup {
+interface TimePeriod {
+    key: string;
     label: string;
-    monthKey: string;
-    days: Date[];
+    groupLabel: string;
+    start: Date;
+    end: Date;
 }
 
-function groupDaysByMonth(days: Date[]): MonthGroup[] {
-    const groups: MonthGroup[] = [];
-    let current: MonthGroup | null = null;
+interface PeriodGroup {
+    label: string;
+    groupKey: string;
+    periods: TimePeriod[];
+}
 
-    for (const day of days) {
-        const key = `${day.getFullYear()}-${day.getMonth()}`;
-        if (!current || current.monthKey !== key) {
-            current = {
-                monthKey: key,
-                label: day.toLocaleDateString("en-US", {
-                    month: "long",
-                    year: "numeric",
-                }),
-                days: [],
-            };
+function startOfWeek(date: Date) {
+    const d = stripTime(date);
+    const diff = (d.getDay() + 6) % 7; // days since Monday
+    d.setDate(d.getDate() - diff);
+    return d;
+}
+
+function unitIndexOf(date: Date, view: ViewMode): number {
+    const d = stripTime(date);
+    switch (view) {
+        case "day":
+            return Math.floor(d.getTime() / (1000 * 60 * 60 * 24));
+        case "week":
+            return Math.floor(startOfWeek(d).getTime() / (1000 * 60 * 60 * 24 * 7));
+        case "month":
+            return d.getFullYear() * 12 + d.getMonth();
+        case "quarter":
+            return d.getFullYear() * 4 + Math.floor(d.getMonth() / 3);
+        case "year":
+            return d.getFullYear();
+    }
+}
+
+function startOfPeriod(date: Date, view: ViewMode): Date {
+    const d = stripTime(date);
+    switch (view) {
+        case "day":
+            return d;
+        case "week":
+            return startOfWeek(d);
+        case "month":
+            return new Date(d.getFullYear(), d.getMonth(), 1);
+        case "quarter":
+            return new Date(d.getFullYear(), Math.floor(d.getMonth() / 3) * 3, 1);
+        case "year":
+            return new Date(d.getFullYear(), 0, 1);
+    }
+}
+
+function addPeriods(date: Date, count: number, view: ViewMode): Date {
+    const d = new Date(date);
+    switch (view) {
+        case "day":
+            d.setDate(d.getDate() + count);
+            return d;
+        case "week":
+            d.setDate(d.getDate() + count * 7);
+            return d;
+        case "month":
+            d.setMonth(d.getMonth() + count);
+            return d;
+        case "quarter":
+            d.setMonth(d.getMonth() + count * 3);
+            return d;
+        case "year":
+            d.setFullYear(d.getFullYear() + count);
+            return d;
+    }
+}
+
+function periodLabel(date: Date, view: ViewMode): string {
+    switch (view) {
+        case "day":
+            return String(date.getDate());
+        case "week":
+            return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+        case "month":
+            return date.toLocaleDateString("en-US", { month: "short" });
+        case "quarter":
+            return `Q${Math.floor(date.getMonth() / 3) + 1}`;
+        case "year":
+            return String(date.getFullYear());
+    }
+}
+
+function periodGroupLabel(date: Date, view: ViewMode): string {
+    switch (view) {
+        case "day":
+        case "week":
+            return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+        case "month":
+        case "quarter":
+        case "year":
+            return String(date.getFullYear());
+    }
+}
+
+function buildPeriods(earliest: Date, latest: Date, view: ViewMode): TimePeriod[] {
+    const periods: TimePeriod[] = [];
+    const first = startOfPeriod(earliest, view);
+    const lastStart = startOfPeriod(latest, view);
+    let cursor = first;
+    let guard = 0;
+    while (cursor.getTime() <= lastStart.getTime() && guard < 1000) {
+        guard++;
+        const nextStart = addPeriods(cursor, 1, view);
+        periods.push({
+            key: `${unitIndexOf(cursor, view)}-${cursor.toISOString()}`,
+            label: periodLabel(cursor, view),
+            groupLabel: periodGroupLabel(cursor, view),
+            start: cursor,
+            end: addDays(nextStart, -1),
+        });
+        cursor = nextStart;
+    }
+    return periods;
+}
+
+function fractionalUnitIndex(date: Date, view: ViewMode): number {
+    const d = stripTime(date);
+    switch (view) {
+        case "day":
+            return Math.floor(d.getTime() / (1000 * 60 * 60 * 24));
+        case "week": {
+            const ws = startOfWeek(d);
+            const into = differenceInDays(d, ws);
+            return unitIndexOf(ws, view) + into / 7;
+        }
+        case "month": {
+            const ms = new Date(d.getFullYear(), d.getMonth(),  1);
+            const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+            const into = differenceInDays(d, ms);
+            return unitIndexOf(ms, view) + into / daysInMonth;
+        }  
+        case "quarter": {
+            const qStartMonth = Math.floor(d.getMonth() /3) * 3;
+            const qs = new Date(d.getFullYear(), qStartMonth, 1);
+            const qe = new Date(d.getFullYear(), qStartMonth + 3, 1);
+            const into = differenceInDays(d, qs);
+            return unitIndexOf(qs, view) + into / differenceInDays(qe, qs);
+        }
+        case "year": {
+            const ys = new Date(d.getFullYear(), 0, 1);
+            const ye = new Date(d.getFullYear() + 1, 0, 1);
+            const into = differenceInDays(d, ys);
+            return unitIndexOf(ys, view) + into / differenceInDays(ye, ys);
+        }
+    }
+}
+
+function columnIndexOf(date: Date, earliest: Date, view: ViewMode): number {
+    return fractionalUnitIndex(date, view) - unitIndexOf(earliest, view);
+}
+
+function groupPeriods(periods: TimePeriod[]): PeriodGroup[] {
+    const groups: PeriodGroup[] = [];
+    let current: PeriodGroup | null = null;
+    for (const p of periods) {
+        if (!current || current.groupKey !== p.groupLabel) {
+            current = { label: p.groupLabel, groupKey: p.groupLabel, periods: [] };
             groups.push(current);
         }
-        current.days.push(day);
+        current.periods.push(p);
     }
-
     return groups;
 }
 
@@ -194,13 +373,23 @@ export default function InteractiveGanttChart({
     const containerRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const deleteDepHoverRef = useRef(false);
+    
+    const autoScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const lastMousePosRef = useRef<{ x: number; y: number} | null>(null);  
 
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [containerWidth, setContainerWidth] = useState(0);
 
-    // Denser row height in fullscreen so more of the chart is visible at once
-    const ROW_HEIGHT = isFullscreen ? 40 : 56;
+    const [viewMode, setViewMode] = useState<ViewMode>("day");
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+    const effectiveNameWidth = sidebarCollapsed ? COLLAPSED_NAME_WIDTH : NAME_WIDTH;
 
+    // Row height reserves headroom above task bars for the floating owner tag.
+    // Fullscreen stays slightly shorter for density but still fits the tag.
+    const ROW_HEIGHT = isFullscreen ? 52 : 56;
+
+
+    
     const toggleMilestone = (id: number) => {
         setCollapsedMilestones((prev) => {
             const next = new Set(prev);
@@ -252,14 +441,28 @@ export default function InteractiveGanttChart({
         return localGroups.find(g => g.id === task.group_id);
     }, [localWorkItems, localGroups]);
 
-    // Track viewport width while in fullscreen so DAY_WIDTH can be fitted to it
+    // Track viewport width while in fullscreen so UNIT_WIDTH can be fitted to it
+    // useEffect(() => {
+    //     if (!isFullscreen) return;
+    //     const update = () => setContainerWidth(window.innerWidth);
+    //     update();
+    //     window.addEventListener("resize", update);
+    //     return () => window.removeEventListener("resize", update);
+    // }, [isFullscreen]);
+
     useEffect(() => {
-        if (!isFullscreen) return;
-        const update = () => setContainerWidth(window.innerWidth);
+        const el = containerRef.current;
+        if(!el) return;
+        const update = () => setContainerWidth(el.clientWidth);
         update();
+        const observer = new ResizeObserver(update);
+        observer.observe(el);
         window.addEventListener("resize", update);
-        return () => window.removeEventListener("resize", update);
-    }, [isFullscreen]);
+        return () => { 
+            observer.disconnect();
+            window.removeEventListener("resize", update);
+        };
+    }, []);
 
     // Escape-to-exit fullscreen + lock background scroll while active
     useEffect(() => {
@@ -429,16 +632,17 @@ export default function InteractiveGanttChart({
         return result;
     }, [localWorkItems, localMilestones, localGroups, collapsedMilestones, collapsedGroups, collapsedTasks]);
 
-    // NOTE: this memo uses BASE_DAY_WIDTH (a fixed constant) rather than the
-    // dynamic DAY_WIDTH, since DAY_WIDTH below depends on totalDays and would
+    // NOTE: this memo uses BASE_UNIT_WIDTH (a fixed constant) rather than the
+    // dynamic UNIT_WIDTH, since UNIT_WIDTH below depends on totalUnits and would
     // otherwise create a circular "used before declaration" dependency.
-    const { earliest, totalDays, days, monthGroups, todayOffset } = useMemo(() => {
+    
+    const { earliest, totalUnits, periods, periodGroups, todayOffset } = useMemo(() => {
         if (!items.length) {
             return {
                 earliest: new Date(),
-                totalDays: 0,
-                days: [] as Date[],
-                monthGroups: [] as MonthGroup[],
+                totalUnits: 0,
+                periods: [] as TimePeriod[],
+                periodGroups: [] as PeriodGroup[],
                 todayOffset: -1,
             };
         }
@@ -451,7 +655,7 @@ export default function InteractiveGanttChart({
         if (dragState?.mode === "move" && dragState.itemId) {
             const draggedItem = items.find((i) => i.id === dragState.itemId);
             if (draggedItem) {
-                const offsetDays = Math.round(dragState.currentOffset / BASE_DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / (BASE_UNIT_WIDTH / VIEW_DAYS_PER_PERIOD[viewMode]));
                 const previewStart = addDays(draggedItem.start, offsetDays);
                 const previewEnd = addDays(draggedItem.end, offsetDays);
                 allStartDates = [...allStartDates, previewStart.getTime()];
@@ -461,7 +665,7 @@ export default function InteractiveGanttChart({
         if (dragState?.mode === "resize-end" && dragState.itemId) {
             const draggedItem = items.find((i) => i.id === dragState.itemId);
             if (draggedItem) {
-                const offsetDays = Math.round(dragState.currentOffset / BASE_DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / (BASE_UNIT_WIDTH / VIEW_DAYS_PER_PERIOD[viewMode]));
                 const previewEnd = addDays(draggedItem.end, offsetDays);
                 allEndDates = [...allEndDates, previewEnd.getTime()];
             }
@@ -469,7 +673,7 @@ export default function InteractiveGanttChart({
         if (dragState?.mode === "resize-start" && dragState.itemId) {
             const draggedItem = items.find((i) => i.id === dragState.itemId);
             if (draggedItem) {
-                const offsetDays = Math.round(dragState.currentOffset / BASE_DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / (BASE_UNIT_WIDTH / VIEW_DAYS_PER_PERIOD[viewMode]));
                 const previewStart = addDays(draggedItem.start, offsetDays);
                 allStartDates = [...allStartDates, previewStart.getTime()];
             }
@@ -477,31 +681,95 @@ export default function InteractiveGanttChart({
 
         const earliest = new Date(Math.min(...allStartDates));
         const latest = new Date(Math.max(...allEndDates));
-        const totalDays = differenceInDays(latest, earliest) + 1;
-        const days = Array.from({ length: totalDays }, (_, i) => addDays(earliest, i));
-        const monthGroups = groupDaysByMonth(days);
+
+        const periods = buildPeriods(earliest, latest, viewMode);
+        const periodGroups = groupPeriods(periods);
+        const totalUnits = periods.length;
 
         const today = new Date();
         const todayOffset =
             today >= stripTime(earliest) && today <= stripTime(latest)
-                ? differenceInDays(today, earliest)
+                ? columnIndexOf(today, earliest, viewMode)
                 : -1;
 
-        return { earliest, totalDays, days, monthGroups, todayOffset };
-    }, [items, dragState]);
+        return { earliest, totalUnits, periods, periodGroups, todayOffset };
+    }, [items, dragState, viewMode]);
 
-    // Rendering DAY_WIDTH: declared AFTER totalDays exists.
+    // Rendering UNIT_WIDTH: declared AFTER totalUnits exists.
     // In fullscreen, fit the whole date range to the viewport width so more
-    // of the chart is visible; otherwise use a comfortable fixed width.
-    const DAY_WIDTH = useMemo(() => {
-        if (!isFullscreen) return 28;
-        if (!containerWidth || totalDays === 0) return 20;
+    // of the chart is visible; otherwise use a comfortable per-view width.
+    // const UNIT_WIDTH = useMemo(() => {
+    //     if (!isFullscreen) return VIEW_UNIT_WIDTH[viewMode];
+    //     if (!containerWidth || totalUnits === 0) return VIEW_UNIT_WIDTH[viewMode];
 
-        const available = containerWidth - NAME_WIDTH;
-        const fitWidth = Math.floor(available / totalDays);
-        // clamp so days don't get unreadably thin or absurdly fat
-        return Math.min(Math.max(fitWidth,28), 40);
-    }, [isFullscreen, containerWidth, totalDays]);
+    //     const available = containerWidth - effectiveNameWidth;
+    //     const fitWidth = Math.floor(available / totalUnits);
+    //     // clamp so periods don't get unreadably thin or absurdly fat
+    //     return Math.min(Math.max(fitWidth, 60), 240);
+    // }, [isFullscreen, containerWidth, totalUnits, viewMode, effectiveNameWidth]);
+
+        const EDGE_TRESHOLD = 60;
+        const MAX_SCORLL_SPEED = 18;
+
+        const runAutoScroll = useCallback(() => {
+            const container = containerRef.current;
+            const pos =lastMousePosRef.current;
+            if(!container || !pos) return;
+
+            const rect = container.getBoundingClientRect();
+            let dx = 0;
+            let dy = 0;
+
+            // Horizontal Edges
+            if(pos.x < rect.left + EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(pos.x - rect.left, 0) / EDGE_TRESHOLD;
+                dx = -Math.ceil(MAX_SCORLL_SPEED * intensity);
+            } else if(pos.x > rect.left + EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(rect.right - pos.x, 0) /EDGE_TRESHOLD;
+                dx = Math.ceil(MAX_SCORLL_SPEED * intensity);
+            }
+
+            //Vertical Edges
+             if(pos.y < rect.left + EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(pos.y - rect.left, 0) / EDGE_TRESHOLD;
+                dy = -Math.ceil(MAX_SCORLL_SPEED * intensity);
+            } else if(pos.x > rect.left + EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(rect.right - pos.y, 0) /EDGE_TRESHOLD;
+                dy = Math.ceil(MAX_SCORLL_SPEED * intensity);
+            }
+
+            if (dx !== 0) container.scrollLeft += dx;
+            if (dy !== 0) container.scrollTop += dy;
+
+            if (dx !== 0){
+                setDragState( (prev) => 
+                prev ? { ...prev, currentOffset: prev.currentOffset + dx} : prev
+                );
+            }
+        },[])
+
+        const UNIT_WIDTH = useMemo(() => {
+        const baseWidth = VIEW_UNIT_WIDTH[viewMode];
+        if( !containerWidth || totalUnits === 0) return baseWidth;
+
+        const available = containerWidth - effectiveNameWidth;
+        if (available <= 0) return baseWidth;
+
+        if (isFullscreen){
+        const fitWidth = Math.floor(available / totalUnits);
+        return Math.min(Math.max(fitWidth, 60), 240);
+        }
+
+        const naturalWidth = totalUnits * baseWidth;
+        if(naturalWidth <available){
+        return Math.floor(available / totalUnits);
+        }
+        return baseWidth;
+        },[isFullscreen, containerWidth, totalUnits, viewMode, effectiveNameWidth]);
+
+    // Pixel-per-day for the current view. Used so drag offsets convert to
+    // individual days regardless of the selected period granularity.
+    const PIXELS_PER_DAY = UNIT_WIDTH / VIEW_DAYS_PER_PERIOD[viewMode];
 
     // Get the displayed position/duration for an item considering drag state
     const getItemLayout = useCallback(
@@ -510,7 +778,7 @@ export default function InteractiveGanttChart({
             let end = item.end;
 
             if (dragState?.itemId === item.id) {
-                const offsetDays = Math.round(dragState.currentOffset / DAY_WIDTH);
+                const offsetDays = Math.round(dragState.currentOffset / PIXELS_PER_DAY);
                 if (dragState.mode === "move") {
                     start = addDays(item.start, offsetDays);
                     end = addDays(item.end, offsetDays);
@@ -521,14 +789,20 @@ export default function InteractiveGanttChart({
                 }
             }
 
-            const startOffset = differenceInDays(start, earliest);
-            const duration = Math.max(differenceInDays(end, start) + 1, 1);
-            const barWidth = Math.max(duration * DAY_WIDTH - 4, DAY_WIDTH - 4);
-            const barLeft = startOffset * DAY_WIDTH + 2 + (item.level * INDENT_WIDTH);
+            const startOffset = columnIndexOf(start, earliest, viewMode);
+            const endOffset = columnIndexOf(end, earliest, viewMode);
+            const duration = Math.max(endOffset - startOffset , 0);
+            const barWidth = Math.max(duration * UNIT_WIDTH, MIN_BAR_WIDTH);
+            const barLeft = startOffset * UNIT_WIDTH ;
 
-            return { start, end, startOffset, duration, barWidth, barLeft };
+            // Vertical placement: integer-pixel `top` keeps the bar perfectly
+            // centered in its row so no sub-pixel bottom edge gets clipped away.
+            const barHeight = barHeightForType(item.type);
+            const barTop = Math.max(Math.round((ROW_HEIGHT - barHeight) / 2), 0);
+
+            return { start, end, startOffset, duration, barWidth, barLeft, barHeight, barTop };
         },
-        [dragState, earliest, DAY_WIDTH]
+        [dragState, earliest, UNIT_WIDTH, PIXELS_PER_DAY, viewMode, ROW_HEIGHT]
     );
 
     // Handle drag start on bars (tasks, groups, milestones)
@@ -569,9 +843,82 @@ export default function InteractiveGanttChart({
         []
     );
 
-        // Handle mouse move for drag operations
+    //     // Handle mouse move for drag operations
+    // const handleGlobalMouseMove = useCallback(
+    //     (e: MouseEvent) => {
+    //         // Handle dependency preview
+    //         if (depPreview) {
+    //             setDepPreview((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
+    //             return;
+    //         }
+
+    //         // Handle move/resize drag
+    //         if (dragState?.mode && (dragState.mode === "move" || dragState.mode === "resize-start" || dragState.mode === "resize-end")) {
+    //             const offset = e.clientX - dragState.startX;
+    //             let clampedOffset = offset;
+
+    //             // Live clamping: enforce task boundary constraints during drag
+    //             const item = items.find((i) => i.id === dragState.itemId);
+    //             if (item && item.type === "task" && item.taskId) {
+    //                 const taskGroup = findGroupForTask(item.taskId);
+    //                 if (taskGroup && taskGroup.start_date && taskGroup.end_date) {
+    //                     const offsetDays = Math.round(offset / PIXELS_PER_DAY);
+    //                     const groupStart = new Date(taskGroup.start_date);
+    //                     const groupEnd = new Date(taskGroup.end_date);
+
+    //                     if (dragState.mode === "move") {
+    //                         const newStart = addDays(item.start, offsetDays);
+    //                         const newEnd = addDays(item.end, offsetDays);
+
+    //                         if (newStart < groupStart) {
+    //                             clampedOffset = differenceInDays(groupStart, item.start) * PIXELS_PER_DAY;
+    //                         }
+    //                         if (newEnd > groupEnd) {
+    //                             clampedOffset = Math.min(clampedOffset, differenceInDays(groupEnd, item.end) * PIXELS_PER_DAY);
+    //                         }
+    //                     } else if (dragState.mode === "resize-end") {
+    //                         const newEnd = addDays(item.end, offsetDays);
+    //                         if (newEnd > groupEnd) {
+    //                             clampedOffset = differenceInDays(groupEnd, item.end) * PIXELS_PER_DAY;
+    //                         }
+    //                     } else if (dragState.mode === "resize-start") {
+    //                         const newStart = addDays(item.start, offsetDays);
+    //                         if (newStart < groupStart) {
+    //                             clampedOffset = differenceInDays(groupStart, item.start) * PIXELS_PER_DAY;
+    //                         }
+    //                     }
+    //                 }
+    //             }
+
+    //             setDragState((prev) => (prev ? { ...prev, currentOffset: clampedOffset } : prev));
+    //         }
+    //     },
+    //     [dragState, depPreview, items, PIXELS_PER_DAY, findGroupForTask]
+    // );
+
+         // Handle mouse move for drag operations
     const handleGlobalMouseMove = useCallback(
         (e: MouseEvent) => {
+            lastMousePosRef.current = { x: e.clientX, y: e.clientY};
+
+            const container = containerRef.current;
+            if(container && (dragState?.mode || depPreview)){
+                const rect = container.getBoundingClientRect();
+                const nearEdge = 
+                    e.clientX < rect.left + EDGE_TRESHOLD ||
+                    e.clientX > rect.right - EDGE_TRESHOLD ||
+                    e.clientY < rect.top + EDGE_TRESHOLD ||
+                    e.clientY > rect.bottom - EDGE_TRESHOLD;
+
+                if(nearEdge && !autoScrollRef.current){
+                    autoScrollRef.current = setInterval(runAutoScroll, 16); //60fps
+                } else if (!nearEdge &&autoScrollRef.current){
+                    clearInterval(autoScrollRef.current);
+                    autoScrollRef.current = null;
+                }
+
+            }
+
             // Handle dependency preview
             if (depPreview) {
                 setDepPreview((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
@@ -588,7 +935,7 @@ export default function InteractiveGanttChart({
                 if (item && item.type === "task" && item.taskId) {
                     const taskGroup = findGroupForTask(item.taskId);
                     if (taskGroup && taskGroup.start_date && taskGroup.end_date) {
-                        const offsetDays = Math.round(offset / DAY_WIDTH);
+                        const offsetDays = Math.round(offset / PIXELS_PER_DAY);
                         const groupStart = new Date(taskGroup.start_date);
                         const groupEnd = new Date(taskGroup.end_date);
 
@@ -597,20 +944,20 @@ export default function InteractiveGanttChart({
                             const newEnd = addDays(item.end, offsetDays);
 
                             if (newStart < groupStart) {
-                                clampedOffset = differenceInDays(groupStart, item.start) * DAY_WIDTH;
+                                clampedOffset = differenceInDays(groupStart, item.start) * PIXELS_PER_DAY;
                             }
                             if (newEnd > groupEnd) {
-                                clampedOffset = Math.min(clampedOffset, differenceInDays(groupEnd, item.end) * DAY_WIDTH);
+                                clampedOffset = Math.min(clampedOffset, differenceInDays(groupEnd, item.end) * PIXELS_PER_DAY);
                             }
                         } else if (dragState.mode === "resize-end") {
                             const newEnd = addDays(item.end, offsetDays);
                             if (newEnd > groupEnd) {
-                                clampedOffset = differenceInDays(groupEnd, item.end) * DAY_WIDTH;
+                                clampedOffset = differenceInDays(groupEnd, item.end) * PIXELS_PER_DAY;
                             }
                         } else if (dragState.mode === "resize-start") {
                             const newStart = addDays(item.start, offsetDays);
                             if (newStart < groupStart) {
-                                clampedOffset = differenceInDays(groupStart, item.start) * DAY_WIDTH;
+                                clampedOffset = differenceInDays(groupStart, item.start) * PIXELS_PER_DAY;
                             }
                         }
                     }
@@ -619,12 +966,15 @@ export default function InteractiveGanttChart({
                 setDragState((prev) => (prev ? { ...prev, currentOffset: clampedOffset } : prev));
             }
         },
-        [dragState, depPreview, items, DAY_WIDTH, findGroupForTask]
+        [dragState, depPreview, items, PIXELS_PER_DAY, findGroupForTask, runAutoScroll]
     );
 
     // Handle mouse up for drag operations
     const handleGlobalMouseUp = useCallback(() => {
-        
+        if (autoScrollRef.current) {
+        clearInterval(autoScrollRef.current);
+        autoScrollRef.current = null;
+    }
         // Handle dependency creation
         if (depPreview) {
             // Find which task bar we dropped on
@@ -693,7 +1043,7 @@ export default function InteractiveGanttChart({
         if (!dragState?.mode) return;
 
         if (dragState.mode === "move" || dragState.mode === "resize-start" || dragState.mode === "resize-end") {
-            const offsetDays = Math.round(dragState.currentOffset / DAY_WIDTH);
+            const offsetDays = Math.round(dragState.currentOffset / PIXELS_PER_DAY);
             if (offsetDays === 0) {
                 setDragState(null);
                 return;
@@ -718,7 +1068,7 @@ export default function InteractiveGanttChart({
 
                         // Clamp group's end to milestone's target_date
                         if (newEnd > milestoneTarget) {
-                            const groupDuration = differenceInDays(item.end, item.start);
+                            const groupDuration = Math.max(differenceInDays(item.end, item.start), 1);
                             newEnd = milestoneTarget;
                             newStart = addDays(newEnd, -groupDuration);
 
@@ -740,7 +1090,7 @@ export default function InteractiveGanttChart({
                     if (group && group.start_date && group.end_date) {
                         const groupStart = new Date(group.start_date);
                         const groupEnd = new Date(group.end_date);
-                        const taskDuration = differenceInDays(item.end, item.start);
+                        const taskDuration = Math.max(differenceInDays(item.end, item.start), 1);
 
                         // Task start cannot be before group start
                         if (constrainedStart < groupStart) {
@@ -958,7 +1308,13 @@ export default function InteractiveGanttChart({
         }
 
                 setDragState(null);
-    }, [dragState, depPreview, items, projectId, workItems, DAY_WIDTH, findGroupForTask, findMilestoneForGroup]);
+    }, [dragState, depPreview, items, projectId, workItems, PIXELS_PER_DAY, findGroupForTask, findMilestoneForGroup]);
+
+    useEffect(() => {
+    return () => {
+        if (autoScrollRef.current) clearInterval(autoScrollRef.current);
+    };
+}, []);
 
     // Attach global mouse listeners
     useEffect(() => {
@@ -989,60 +1345,91 @@ export default function InteractiveGanttChart({
             }
             ref={containerRef}
         >
+            
             <TooltipProvider delayDuration={300}>
+                
+                <div className="sticky top-0 left-0 z-50 flex flex-wrap items-center gap-2 border-b border-input bg-background px-2 py-1.5 text-sm w-full min-w-max">
+                    <button
+                        onClick={() => setSidebarCollapsed((prev) => !prev)}
+                        title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                        className="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
+                    >
+                        {sidebarCollapsed ? <PanelLeftOpen className="h-3.5 w-3.5" /> : <PanelLeftClose className="h-3.5 w-3.5" />}
+                    </button>
+                    <div className="flex items-center gap-0.5 rounded border border-input bg-muted/40 p-0.5">
+                        {(["day", "week", "month", "quarter", "year"] as ViewMode[]).map((v) => (
+                            <button
+                                key={v}
+                                onClick={() => setViewMode(v)}
+                                title={`${v} view`}
+                                className={`h-6 px-2 rounded text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+                                    viewMode === v
+                                        ? "bg-background text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
+                                }`}
+                            >
+                                {v === "quarter" ? "Qtr" : v.charAt(0).toUpperCase() + v.slice(1, 3)}
+                            </button>
+                        ))}
+                    </div>
+                    <span className="flex-1" />
+                    
+                    <button
+                        onClick={() => setShowDependencies(!showDependencies)}
+                        title={showDependencies ? "Hide dependencies" : "Show dependencies"}
+                        className="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
+                    >
+                        {showDependencies ? <Link2 className="h-3.5 w-3.5 text-blue-600" /> : <Link2Off className="h-3.5 w-3.5" />}
+                    </button>
+                    <button
+                        onClick={() => setIsFullscreen((prev) => !prev)}
+                        title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+                        className="inline-flex items-center justify-center h-7 w-7 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
+                    >
+                        {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+                    </button>
+                </div>
                 <div
                     className="grid"
                     style={{
                         position: 'relative',
-                        width: NAME_WIDTH + totalDays * DAY_WIDTH,
-                        minWidth: NAME_WIDTH + totalDays * DAY_WIDTH,
-                        gridTemplateColumns: `${NAME_WIDTH}px ${totalDays * DAY_WIDTH}px`,
+                        width: effectiveNameWidth + totalUnits * UNIT_WIDTH,
+                        minWidth: effectiveNameWidth + totalUnits * UNIT_WIDTH,
+                        gridTemplateColumns: `${effectiveNameWidth}px ${totalUnits * UNIT_WIDTH}px`,
                     }}
                 >
                     {/* ── Header: Task label ── */}
-                    <div className="sticky left-0 z-50 border-b bg-background p-3 font-semibold text-sm flex items-center gap-2">
+                    <div className="sticky left-0 z-50 border-b bg-background p-3 font-semibold text-sm flex items-center">
                         Task
-                        <button
-                            onClick={() => setShowDependencies(!showDependencies)}
-                            title={showDependencies ? "Hide dependencies" : "Show dependencies"}
-                            className="inline-flex items-center justify-center h-6 w-6 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
-                        >
-                            {showDependencies ? <Link2 className="h-3.5 w-3.5 text-blue-600" /> : <Link2Off className="h-3.5 w-3.5" />}
-                        </button>
-                        <button
-                            onClick={() => setIsFullscreen((prev) => !prev)}
-                            title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
-                            className="inline-flex items-center justify-center h-6 w-6 rounded border border-input bg-background hover:bg-accent text-muted-foreground"
-                        >
-                            {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-                        </button>
                     </div>
 
-                    {/* ── Header: Month groups + day numbers ── */}
+                    {/* ── Header: Period groups + unit labels ── */}
                     <div className="border-b bg-muted/40 min-w-0">
-                        {/* Month labels row */}
+                        {/* Group labels row */}
                         <div className="flex min-w-0">
-                            {monthGroups.map((group) => (
+                            {periodGroups.map((group) => (
                                 <div
                                     key={group.label}
                                     className="flex items-center justify-center border-l py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                                    style={{ width: group.days.length * DAY_WIDTH }}
+                                    style={{ width: group.periods.length * UNIT_WIDTH }}
                                 >
                                     {group.label}
                                 </div>
                             ))}
                         </div>
-                        {/* Day numbers row */}
+                        {/* Unit labels row */}
                         <div className="flex min-w-0">
-                            {days.map((day) => (
+                            {periods.map((period) => (
                                 <div
-                                    key={day.toISOString()}
+                                    key={period.key}
                                     className={`flex items-center justify-center border-l py-1 text-[11px] tabular-nums ${
-                                        isWeekend(day) ? "bg-muted/30 text-muted-foreground/50" : "text-muted-foreground"
-                                    } ${isToday(day) ? "font-bold text-blue-600" : ""}`}
-                                    style={{ width: DAY_WIDTH, height: 24 }}
+                                        viewMode === "day" && isWeekend(period.start)
+                                            ? "bg-muted/30 text-muted-foreground/50"
+                                            : "text-muted-foreground"
+                                    } ${isToday(period.start) ? "font-bold text-blue-600" : ""}`}
+                                    style={{ width: UNIT_WIDTH, height: 24 }}
                                 >
-                                    {formatDayNumber(day)}
+                                    {period.label}
                                 </div>
                             ))}
                         </div>
@@ -1059,55 +1446,58 @@ export default function InteractiveGanttChart({
                                 {/* Sidebar cell */}
                                 <div
                                     className={`sticky left-0 z-50 flex items-center border-b px-3 transition-colors bg-background`}
-                                    style={{ height: ROW_HEIGHT, paddingLeft: 12 + item.level * 20 }}
+                                    style={{ height: ROW_HEIGHT, paddingLeft: sidebarCollapsed ? 0 : 12 + item.level * 20 }}
                                 >
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2">
-                                            {/* Collapse/Expand toggle for milestones and groups */}
-                                            {(item.type === "milestone" || item.type === "group" || item.type === "task") && (
-                                                <button
-                                                    onClick={() => {
-                                                        if (item.type === "milestone") {
-                                                            toggleMilestone(parseInt(item.id.replace('milestone-', '')));
-                                                        } else if (item.type === "group") {
-                                                            toggleGroup(parseInt(item.id.replace('group-', '')));
-                                                        } else if (item.type === "task") {
-                                                            toggleTask(parseInt(item.id.replace('task-', '')));
-                                                        }
-                                                    }}
-                                                    className="inline-flex items-center justify-center h-4 w-4 hover:bg-muted rounded shrink-0"
-                                                >
-                                                    {item.collapsed ? (
-                                                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                                                    ) : (
-                                                        <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                                                    )}
-                                                </button>
-                                            )}
-                                            {item.type === "task" && (
-                                                <span className="inline-block w-4 shrink-0" />
-                                            )}
-
-                                            <span className="min-w-0 flex-1 text-sm font-medium truncate">
-                                                {item.name}
-                                            </span>
-                                            <span
-                                                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
-                                                    item.type === "milestone"
-                                                        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-                                                        : item.type === "group"
-                                                          ? "bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-400"
-                                                          : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400"
+                                    <div className={`min-w-0 ${sidebarCollapsed ? "w-full flex items-center justify-center" : "flex-1"}`}>
+                                       
+                                        {!sidebarCollapsed && (
+                                            <>
+                                                
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="min-w-0 flex-1 text-sm font-medium truncate">
+                                                            {item.name}
+                                                            {(item.type === "milestone" || item.type === "group" ) && (
+                                            <button
+                                                onClick={() => {
+                                                    if (item.type === "milestone") {
+                                                        toggleMilestone(parseInt(item.id.replace('milestone-', '')));
+                                                    } else if (item.type === "group") {
+                                                        toggleGroup(parseInt(item.id.replace('group-', '')));
+                                                    } 
+                                                }}
+                                                className={`inline-flex items-center justify-center hover:bg-muted rounded shrink-0 ${
+                                                    sidebarCollapsed ? "h-5 w-5" : "h-4 w-4"
                                                 }`}
                                             >
-                                                {item.type === "milestone" ? "Milestone" : item.type === "group" ? "Group" : "Task"}
-                                            </span>
-                                        </div>
-                                        <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                                            {item.type === "milestone"
-                                                ? `Due: ${formatDateShort(item.end)}`
-                                                : formatDateRange(layout.start, layout.end)}
-                                        </div>
+                                                {item.collapsed ? (
+                                                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                                                ) : (
+                                                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
+                                                )}
+                                            </button>
+                                        )}
+                                                        </span>
+                                                        <span
+                                                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                                                                item.type === "milestone"
+                                                                    ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                                                                    : item.type === "group"
+                                                                      ? "bg-slate-100 text-slate-700 dark:bg-slate-900/40 dark:text-slate-400"
+                                                                      : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400"
+                                                            }`}
+                                                        >
+                                                            {item.type === "milestone" ? "Milestone" : item.type === "group" ? "Group" : "Task"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                                                        {item.type === "milestone"
+                                                            ? `Due: ${formatDateShort(item.end)}`
+                                                            : formatDateRange(layout.start, layout.end)}
+                                                    </div>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
@@ -1119,14 +1509,10 @@ export default function InteractiveGanttChart({
                                     style={{ height: ROW_HEIGHT }}
                                     data-task-id={item.id}
                                 >
-                                    {/* Vertical grid lines + weekend fills */}
+                                    {/* Vertical grid lines */}
                                     <div className="absolute inset-0 flex pointer-events-none">
-                                        {days.map((d) => (
-                                            <div
-                                                key={d.toISOString()}
-                                                className={`border-l ${isWeekend(d) ? "bg-muted/20" : ""}`}
-                                                style={{ width: DAY_WIDTH }}
-                                            />
+                                        {periods.map((period) => (
+                                            <div key={period.key} className={`border-l ${viewMode === "day" && isWeekend(period.start) ? "bg-muted/20" : ""}`} style={{ width: UNIT_WIDTH }} />
                                         ))}
                                     </div>
 
@@ -1135,14 +1521,14 @@ export default function InteractiveGanttChart({
                                         <>
                                             <div
                                                 className="absolute top-0 bottom-0 z-10 pointer-events-none"
-                                                style={{ left: todayOffset * DAY_WIDTH + 12 }}
+                                                style={{ left: todayOffset * UNIT_WIDTH + 12 }}
                                             >
                                                 <div className="w-px h-full bg-blue-500/60" />
                                             </div>
                                             <div
                                                 className="absolute -top-0.5 z-10 rounded bg-blue-500 px-1 py-[1px] text-[9px] font-bold text-white whitespace-nowrap pointer-events-none"
                                                 style={{
-                                                    left: Math.max(20, Math.min(todayOffset * DAY_WIDTH + 12, totalDays * DAY_WIDTH - 20)),
+                                                    left: Math.max(20, Math.min(todayOffset * UNIT_WIDTH + 12, totalUnits * UNIT_WIDTH - 20)),
                                                     transform: "translateX(-50%)",
                                                 }}
                                             >
@@ -1156,15 +1542,20 @@ export default function InteractiveGanttChart({
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <div
-                                                    className="absolute top-1/2 -translate-y-1/2"
-                                                    style={{ left: layout.barLeft, width: layout.barWidth }}
+                                                    className="absolute"
+                                                    style={{ left: layout.barLeft, top: layout.barTop, width: layout.barWidth }}
                                                     onMouseDown={(e) => handleDragStart(e, item, "move")}
                                                 >
                                                     {item.type === "task" ? (
                                                         <>
-                                                            <span className="relative z-10 flex items-center h-full px-2 text-[11px] font-semibold text-white whitespace-nowrap pointer-events-none">
-                                                                {item.assignee?.name} | Progress:  {item.progress > 0 ? `${item.progress}%` : ""}
-                                                            </span>
+                                                            {/* Owner tag — floats above the bar so it never overlaps the name
+                                                                and stays visible even on narrow bars */}
+                                                            {(item.assignee?.name || item.progress > 0) && (
+                                                                <span className="absolute left-0 z-20 -translate-y-[calc(100%+2px)] pointer-events-none whitespace-nowrap rounded bg-indigo-600/80 px-1 py-0.5 text-[9px] font-medium text-indigo-100">
+                                                                    {(item.assignee?.name ? item.assignee.name : "Unassigned")}
+                                                                    {item.progress > 0 ? ` · ${item.progress}%` : ""}
+                                                                </span>
+                                                            )}
                                                             <div
                                                                 className={`relative h-7 rounded-md overflow-hidden cursor-grab active:cursor-grabbing select-none
                                                                 bg-gradient-to-r from-indigo-600 to-indigo-500
@@ -1272,10 +1663,10 @@ export default function InteractiveGanttChart({
                         <div
                             className="absolute pointer-events-none z-40 overflow-hidden"
                             style={{
-                                left: NAME_WIDTH,
-                                width: totalDays * DAY_WIDTH,
+                                left: effectiveNameWidth,
+                                width: totalUnits * UNIT_WIDTH,
                                 height: items.length * ROW_HEIGHT,
-                                top: 48,
+                                top: 42,
                             }}
                         >
                             <svg

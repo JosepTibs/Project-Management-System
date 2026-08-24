@@ -8,16 +8,19 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import {  Users,  FolderKanban,  CheckSquare,  AlertCircle,  ArrowUpRight,  Clock,  Activity,  Percent,  CalendarClock,  CircleSlash,  Flag,  Milestone,  TrendingUp } from 'lucide-react';
+import { DonutChart, DonutLegend } from '@/components/charts/donut-chart';
+import { TrendChart } from '@/components/charts/trend-chart';
+import { WorkloadChart } from '@/components/charts/workload-chart';
+import {  Users,  FolderKanban,  CheckSquare,  AlertCircle,  ArrowUpRight,  Clock,  Activity,  Percent,  CalendarClock,  CircleSlash,  Milestone,  TrendingUp } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Dashboard', href: '/dashboard' }];
 
 interface Status { name: string; count: number; }
 interface RecentWorkItem { id: number; title: string; priority: string; project: string; status: string; due_date: string | null; }
 interface ProjectOverview { id: number; name: string; description: string; members_count: number; work_items_count: number; completion_percentage: number; }
-interface TeamDistribution { project_name: string; total: number; }
 interface TaskCount { user_name: string; total: number; }
 interface MilestoneOverview { total: number; completed: number; overdue: number; upcoming: number; }
+interface TimelinePoint { week: string; created: number; completed: number; }
 interface DashboardStats {
     total_users: number;
     total_projects: number;
@@ -51,9 +54,9 @@ interface DashboardPageProps extends Record<string, unknown> {
     statuses: Status[];
     recent_work_items: RecentWorkItem[];
     projects_overview: ProjectOverview[];
-    team_distribution: TeamDistribution[];
     recent_activities: ActivityLog[];
     tasks_per_user: TaskCount[];
+    timeline: TimelinePoint[];
     milestones_overview: MilestoneOverview;
 }
 
@@ -77,17 +80,26 @@ export default function Dashboard() {
         statuses = [], 
         recent_work_items = [], 
         projects_overview = [], 
-        team_distribution = [], 
         recent_activities = [], 
         tasks_per_user = [], 
+        timeline = [],
         milestones_overview = { total: 0, completed: 0, overdue: 0, upcoming: 0 } 
     } = usePage<DashboardPageProps>().props;
     const { auth } = usePage<SharedData>().props;
     const user = auth?.user;
 
-    const maxTeamMembers = Math.max(...team_distribution.map((d) => d.total), 1);
     const totalWork = stats?.total_work_items || 1;
-    const maxTasks = Math.max(...tasks_per_user.map((t) => t.total), 1);
+
+    const priorityData = [
+        { name: 'Critical', value: stats?.critical_priority ?? 0, color: '#8b5cf6' },
+        { name: 'High', value: stats?.high_priority ?? 0, color: '#e11d48' },
+        { name: 'Medium', value: stats?.medium_priority ?? 0, color: '#f59e0b' },
+        { name: 'Low', value: stats?.low_priority ?? 0, color: '#10b981' },
+    ];
+
+    const statusData = statuses.map((status) => ({ name: status.name, value: status.count }));
+
+    const workloadData = tasks_per_user.map((task) => ({ name: task.user_name, value: task.total }));
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -227,65 +239,41 @@ export default function Dashboard() {
                     </Card>
                 </div>
 
-                {/* Progress & Distribution Metrics */}
+                {/* Zoho-style Work Summary & Priority donuts */}
                 <div className="grid gap-6 md:grid-cols-2">
                     <Card className="shadow-xs">
                         <CardHeader>
-                            <CardTitle className="text-base font-semibold">Priority Distribution</CardTitle>
-                            <CardDescription>Breakdown of active tasks by set urgency</CardDescription>
+                            <CardTitle className="text-base font-semibold">Priority Mix</CardTitle>
+                            <CardDescription>Active tasks by set urgency</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-1.5">
-                                <div className="flex justify-between text-xs font-medium">
-                                    <span className="text-rose-600 dark:text-rose-400">High Priority</span>
-                                    <span>{stats?.high_priority ?? 0}</span>
-                                </div>
-                                <Progress value={((stats?.high_priority ?? 0) / totalWork) * 100} className="h-2 bg-rose-100 dark:bg-rose-950 [&>div]:bg-rose-600" />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <div className="flex justify-between text-xs font-medium">
-                                    <span className="text-amber-600 dark:text-amber-400">Medium Priority</span>
-                                    <span>{stats?.medium_priority ?? 0}</span>
-                                </div>
-                                <Progress value={((stats?.medium_priority ?? 0) / totalWork) * 100} className="h-2 bg-amber-100 dark:bg-amber-950 [&>div]:bg-amber-500" />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <div className="flex justify-between text-xs font-medium">
-                                    <span className="text-emerald-600 dark:text-emerald-400">Low Priority</span>
-                                    <span>{stats?.low_priority ?? 0}</span>
-                                </div>
-                                <Progress value={((stats?.low_priority ?? 0) / totalWork) * 100} className="h-2 bg-emerald-100 dark:bg-emerald-950 [&>div]:bg-emerald-500" />
-                            </div>
+                        <CardContent className="grid gap-6 sm:grid-cols-2 items-center">
+                            <DonutChart
+                                data={priorityData}
+                                centerValue={String(totalWork)}
+                                centerLabel="Total items"
+                            />
+                            <DonutLegend data={priorityData} />
                         </CardContent>
                     </Card>
 
                     <Card className="shadow-xs">
                         <CardHeader>
-                            <CardTitle className="text-base font-semibold">Status Pipeline</CardTitle>
+                            <CardTitle className="text-base font-semibold">Work Summary</CardTitle>
                             <CardDescription>Work items grouped by current status</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            {statuses.length > 0 ? (
-                                statuses.map((status) => (
-                                    <div key={status.name} className="space-y-1.5">
-                                        <div className="flex justify-between text-xs font-medium">
-                                            <span>{status.name}</span>
-                                            <span className="text-muted-foreground">{status.count}</span>
-                                        </div>
-                                        <Progress value={(status.count / totalWork) * 100} className="h-2" />
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-xs text-muted-foreground">No pipeline statuses configured.</p>
-                            )}
+                        <CardContent className="grid gap-6 sm:grid-cols-2 items-center">
+                            <DonutChart
+                                data={statusData}
+                                centerValue={String(totalWork)}
+                                centerLabel="Total items"
+                            />
+                            <DonutLegend data={statusData} />
                         </CardContent>
                     </Card>
                 </div>
 
                 {/* Health & Workload Metrics */}
-                <div className="grid gap-6 lg:grid-cols-3">
+                <div className="grid gap-6 lg:grid-cols-2">
                     <Card className="shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Milestones</CardTitle>
@@ -312,51 +300,34 @@ export default function Dashboard() {
 
                     <Card className="shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Team Workload</CardTitle>
+                            <CardTitle className="text-sm font-medium text-muted-foreground">Tasks Per Assignee</CardTitle>
                             <TrendingUp className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            {tasks_per_user.length > 0 ? (
-                                tasks_per_user.map((task, index) => (
-                                    <div key={task.user_name} className="flex items-center gap-3">
-                                        <div className="w-5 text-xs font-semibold text-muted-foreground">{index + 1}</div>
-                                        <div className="flex-1 space-y-1.5">
-                                            <div className="flex justify-between text-xs font-medium">
-                                                <span className="truncate">{task.user_name}</span>
-                                                <span className="text-muted-foreground">{task.total}</span>
-                                            </div>
-                                            <Progress value={(task.total / maxTasks) * 100} className="h-2" />
-                                        </div>
-                                    </div>
-                                ))
+                            <p className="text-xs text-muted-foreground">Open workload by team member; bars above 1.5&times; the average appear highlighted.</p>
+                            {workloadData.length > 0 ? (
+                                <WorkloadChart data={workloadData} height={240} />
                             ) : (
-                                <p className="text-xs text-muted-foreground">No assigned tasks to show.</p>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    <Card className="shadow-xs">
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground">Team Members Per Project</CardTitle>
-                            <Flag className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            {team_distribution.length > 0 ? (
-                                team_distribution.map((member) => (
-                                    <div key={member.project_name} className="space-y-1.5">
-                                        <div className="flex justify-between text-xs font-medium">
-                                            <span className="truncate">{member.project_name}</span>
-                                            <span className="text-muted-foreground">{member.total}</span>
-                                        </div>
-                                        <Progress value={(member.total / maxTeamMembers) * 100} className="h-2" />
-                                    </div>
-                                ))
-                            ) : (
-                                <p className="text-xs text-muted-foreground">No team distribution data.</p>
+                                <p className="text-sm text-muted-foreground">No assigned tasks to show.</p>
                             )}
                         </CardContent>
                     </Card>
                 </div>
+
+                {/* Throughput Trend */}
+                <Card className="shadow-xs">
+                    <CardHeader>
+                        <CardTitle className="text-base font-semibold">Throughput</CardTitle>
+                        <CardDescription>Work items created vs completed per week (last 8 weeks)</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {timeline.length > 0 ? (
+                            <TrendChart data={timeline} height={260} />
+                        ) : (
+                            <p className="text-sm text-muted-foreground">No trend data available.</p>
+                        )}
+                    </CardContent>
+                </Card>
 
                 {/* Tabbed Interactive Section */}
                 <Tabs defaultValue="work_items" className="w-full">

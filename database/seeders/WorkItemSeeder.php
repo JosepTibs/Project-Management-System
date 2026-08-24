@@ -15,8 +15,6 @@ class WorkItemSeeder extends Seeder
     {
         $projects = projects::all();
         $priorities = ['low', 'medium', 'high', 'critical'];
-        $today = now()->startOfDay();
-        $threeMonths = now()->addMonths(3);
 
         $titlesByProject = [
             'Website Redesign' => [
@@ -156,7 +154,23 @@ class WorkItemSeeder extends Seeder
                 $group = $groups->get($index % $groups->count()); // Distribute evenly across all groups
                 $assignee = $members->random();
                 $priority = $priorities[array_rand($priorities)];
-                $dueDate = $today->copy()->addDays(rand(1, $threeMonths->diffInDays($today)));
+                $groupStart = $group->start_date
+                    ? $group->start_date->copy()->startOfDay()
+                    : now()->startOfDay();
+                $groupEnd = $group->end_date
+                    ? $group->end_date->copy()->startOfDay()
+                    : now()->addMonths(3)->startOfDay();
+                $groupDuration = max(1, $groupStart->diffInDays($groupEnd));
+
+                $daysFromStart = rand(0, $groupDuration);
+                $dueDate = $groupStart->copy()->addDays($daysFromStart);
+
+                $startDate = $dueDate->copy()->subDays(rand(0, 7));
+
+                // Clamp start date to not go before group start
+                if ($startDate->lessThan($groupStart)) {
+                    $startDate = $groupStart->copy();
+                }
 
                 work_item::create([
                     'project_id' => $project->id,
@@ -166,7 +180,7 @@ class WorkItemSeeder extends Seeder
                     'description' => "Task: {$title} for the {$project->name} project.",
                     'assignee_id' => $assignee->id,
                     'priority' => $priority,
-                    'start_date' => $dueDate->copy()->subDays(rand(1, 7))->format('Y-m-d'),
+                    'start_date' => $startDate->format('Y-m-d'),
                     'due_date' => $dueDate->format('Y-m-d'),
                     'progress' => rand(0, 100),
                 ]);

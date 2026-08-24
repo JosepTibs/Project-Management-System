@@ -572,7 +572,7 @@ export default function ProjectSetupSheet({
                                     autoFocus
                                     value={name}
                                     onChange={event => setName(event.target.value)}
-                                    placeholder="Website Redesign"
+                                    placeholder="Placeholder"
                                 />
                             </div>
 

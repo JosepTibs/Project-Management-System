@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Search, ExternalLink, Edit, Trash2 } from 'lucide-react';
+import { Search, ExternalLink, Edit, Trash2, Archive, ArchiveRestore } from 'lucide-react';
 import { useState, useMemo } from 'react';
 
 interface Status {
@@ -39,10 +39,12 @@ interface WorkItemData {
     group: Group | null;
     assignee: Member | null;
     project: ProjectRef | null;
+    archived?: boolean;
 }
 
 interface GlobalWorkItemsPageProps extends Record<string, unknown> {
     workItems: WorkItemData[];
+    archived?: boolean;
     filters: {
         projects: ProjectRef[];
         statuses: Status[];
@@ -74,8 +76,20 @@ function handleDelete(projectId:number, workItemId:number) {
         }
     }
 
+    function handleArchive(workItemId: number) {
+        router.post(`/work-items/${workItemId}/archive`, {}, { preserveScroll: true });
+    }
+
+    function handleRestore(workItemId: number) {
+        router.post(`/work-items/${workItemId}/restore`, {}, { preserveScroll: true });
+    }
+
+    function setArchivedView(archived: boolean) {
+        router.get('/work-items', { archived: archived ? '1' : '0' }, { preserveState: true, replace: true });
+    }
+
 export default function GlobalWorkItemsIndex() {
-    const { workItems, filters } = usePage<GlobalWorkItemsPageProps>().props;
+    const { workItems, archived = false, filters } = usePage<GlobalWorkItemsPageProps>().props;
     const [search, setSearch] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -100,6 +114,13 @@ export default function GlobalWorkItemsIndex() {
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold">All Work Items</h1>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setArchivedView(!archived)}
+                    >
+                        {archived ? 'View Active' : 'View Archived'}
+                    </Button>
                 </div>
 
                 {/* Filters */}
@@ -228,6 +249,25 @@ export default function GlobalWorkItemsIndex() {
                                                                 <Edit className="h-4 w-4" />
                                                             </Button>
                                                         </Link>
+                                                        {item.archived ? (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                title="Restore"
+                                                                onClick={() => handleRestore(item.id)}
+                                                            >
+                                                                <ArchiveRestore className="h-4 w-4" />
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                title="Archive"
+                                                                onClick={() => handleArchive(item.id)}
+                                                            >
+                                                                <Archive className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
                                                         <Button
                                                             variant="outline"
                                                             size="sm"

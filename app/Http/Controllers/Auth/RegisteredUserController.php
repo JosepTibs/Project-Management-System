@@ -32,20 +32,20 @@ class RegisteredUserController extends Controller
     {
         $request->validate([
             'username' => 'required|string|max:255',
-            'fname' => 'required|string|max:255',
-            'mname' => 'nullable|string|max:255',
-            'lname' => 'required|string|max:255',
-            'sname' => 'nullable|string|max:255',
+            'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+        // Split the 'name' field into fname, mname, lname, sname
+        $nameParts = explode(' ', trim($request->name), 4);
+
         $user = User::create([
             'username' => $request->username,
-            'fname' => $request->fname,
-            'mname' => $request->mname,
-            'lname' => $request->lname,
-            'sname' => $request->sname,
+            'fname' => $nameParts[0] ?? '',
+            'mname' => $nameParts[1] ?? null,
+            'lname' => $nameParts[2] ?? '',
+            'sname' => $nameParts[3] ?? null,
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);

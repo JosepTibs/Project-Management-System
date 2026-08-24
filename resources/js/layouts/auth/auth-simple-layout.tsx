@@ -1,4 +1,3 @@
-import AppLogoIcon from '@/components/app-logo-icon';
 import { Link } from '@inertiajs/react';
 
 interface AuthLayoutProps {
@@ -15,18 +14,22 @@ export default function AuthSimpleLayout({ children, title, description }: AuthL
             <div className="flex w-full flex-col items-center justify-center gap-6 p-6 md:w-1/2 md:p-10">
                 <div className="w-full max-w-sm">
                     <div className="flex flex-col gap-8">
-                        <div className="flex flex-col items-center gap-4">
+                        <div className="flex flex-col items-center gap-3">
                             <Link href={route('home')} className="flex flex-col items-center gap-2 font-medium">
-                                <div className="mb-1 flex h-9 w-9 items-center justify-center rounded-md bg-[#131F42]">
-                                    <AppLogoIcon className="size-9 fill-current text-[#20E2CD]" />
+                                <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-md bg-[#131F42] ring-1 ring-[#20E2CD]/30">
+                                    <img src="/phccilogo.png" alt="PHCCI logo" className="size-10 object-contain" />
                                 </div>
                                 <span className="sr-only">{title}</span>
                             </Link>
 
-                            <div className="space-y-2 text-center">
-                                <h1 className="text-2xl font-semibold text-[#F4F6F9]">{title}</h1>
-                                <p className="text-[#8C9A9E] text-center text-sm">{description}</p>
-                            </div>
+                            <span className="text-center text-lg font-semibold tracking-wide text-[#F4F6F9]">
+                                PHCCI Project Management System
+                            </span>
+                        </div>
+
+                        <div className="space-y-2 text-center">
+                            <h1 className="text-2xl font-semibold text-[#F4F6F9]">{title}</h1>
+                            <p className="text-[#8C9A9E] text-center text-sm">{description}</p>
                         </div>
                         {children}
                     </div>

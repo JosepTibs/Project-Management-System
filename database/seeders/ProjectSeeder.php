@@ -77,6 +77,8 @@ class ProjectSeeder extends Seeder
         ];
 
         foreach ($projects as $project) {
+            $project['start_date'] = now()->subMonth(6)->startOfMonth()->format('Y-m-d');
+            $project['end_date'] = now()->addMonth(6)->startOfMonth()->format('Y-m-d');
             projects::create($project);
         }
     }

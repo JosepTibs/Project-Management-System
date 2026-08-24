@@ -12,8 +12,7 @@ import AuthLayout from '@/layouts/auth-layout';
 interface RegisterForm {
     [key: string]: string;
     username: string;
-    fname: string;
-    lname: string;
+    name: string;
     email: string;
     password: string;
     password_confirmation: string;
@@ -22,8 +21,7 @@ interface RegisterForm {
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm<RegisterForm>({
         username: '',
-        fname: '',
-        lname: '',
+        name: '',
         email: '',
         password: '',
         password_confirmation: '',
@@ -36,13 +34,18 @@ export default function Register() {
         });
     };
 
+    const inputClasses =
+        'border-[#131F42] bg-[#131F42] text-[#F4F6F9] placeholder:text-[#8C9A9E] focus:border-[#20E2CD] focus:ring-[#20E2CD] focus:ring-offset-0';
+
     return (
         <AuthLayout title="Create an account" description="Enter your details below to create your account">
             <Head title="Register" />
-            <form className="flex flex-col gap-6" onSubmit={submit}>
-                <div className="grid gap-6">
+            <form className="mt-2 flex flex-col gap-4" onSubmit={submit}>
+                <div className="grid gap-4">
                     <div className="grid gap-2">
-                        <Label htmlFor="username">Username</Label>
+                        <Label htmlFor="username" className="text-[#F4F6F9]">
+                            Username
+                        </Label>
                         <Input
                             id="username"
                             type="text"
@@ -54,99 +57,96 @@ export default function Register() {
                             onChange={(e) => setData('username', e.target.value)}
                             disabled={processing}
                             placeholder="Username"
+                            className={inputClasses}
                         />
                         <InputError message={errors.username} className="mt-2" />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="fname">First Name</Label>
-                            <Input
-                                id="fname"
-                                type="text"
-                                required
-                                tabIndex={2}
-                                value={data.fname}
-                                onChange={(e) => setData('fname', e.target.value)}
-                                disabled={processing}
-                                placeholder="First name"
-                            />
-                            <InputError message={errors.fname} />
-                        </div>
-
-                        <div className="grid gap-2">
-                            <Label htmlFor="lname">Last Name</Label>
-                            <Input
-                                id="lname"
-                                type="text"
-                                required
-                                tabIndex={3}
-                                value={data.lname}
-                                onChange={(e) => setData('lname', e.target.value)}
-                                disabled={processing}
-                                placeholder="Last name"
-                            />
-                            <InputError message={errors.lname} />
-                        </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="name" className="text-[#F4F6F9]">
+                            Full name
+                        </Label>
+                        <Input
+                            id="name"
+                            type="text"
+                            required
+                            tabIndex={2}
+                            autoComplete="name"
+                            value={data.name}
+                            onChange={(e) => setData('name', e.target.value)}
+                            disabled={processing}
+                            placeholder="First and last name"
+                            className={inputClasses}
+                        />
+                        <InputError message={errors.name} />
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="email">Email address</Label>
+                        <Label htmlFor="email" className="text-[#F4F6F9]">
+                            Email address
+                        </Label>
                         <Input
                             id="email"
                             type="email"
                             required
-                            tabIndex={4}
+                            tabIndex={3}
                             autoComplete="email"
                             value={data.email}
                             onChange={(e) => setData('email', e.target.value)}
                             disabled={processing}
                             placeholder="email@example.com"
+                            className={inputClasses}
                         />
                         <InputError message={errors.email} />
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="password">Password</Label>
+                        <Label htmlFor="password" className="text-[#F4F6F9]">
+                            Password
+                        </Label>
                         <Input
                             id="password"
                             type="password"
                             required
-                            tabIndex={5}
+                            tabIndex={4}
                             autoComplete="new-password"
                             value={data.password}
                             onChange={(e) => setData('password', e.target.value)}
                             disabled={processing}
                             placeholder="Password"
+                            className={inputClasses}
                         />
                         <InputError message={errors.password} />
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="password_confirmation">Confirm password</Label>
+                        <Label htmlFor="password_confirmation" className="text-[#F4F6F9]">
+                            Confirm password
+                        </Label>
                         <Input
                             id="password_confirmation"
                             type="password"
                             required
-                            tabIndex={6}
+                            tabIndex={5}
                             autoComplete="new-password"
                             value={data.password_confirmation}
                             onChange={(e) => setData('password_confirmation', e.target.value)}
                             disabled={processing}
                             placeholder="Confirm password"
+                            className={inputClasses}
                         />
                         <InputError message={errors.password_confirmation} />
                     </div>
 
-                    <Button type="submit" className="mt-2 w-full" tabIndex={7} disabled={processing}>
+                    <Button type="submit" className="mt-1 w-full" tabIndex={6} disabled={processing}>
                         {processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
                         Create account
                     </Button>
                 </div>
 
-                <div className="text-muted-foreground text-center text-sm">
+                <div className="text-center text-sm text-[#8C9A9E]">
                     Already have an account?{' '}
-                    <TextLink href={route('login')} tabIndex={8}>
+                    <TextLink href={route('login')} tabIndex={7} className="text-[#20E2CD]">
                         Log in
                     </TextLink>
                 </div>

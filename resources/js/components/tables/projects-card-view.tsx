@@ -1,7 +1,7 @@
-import { Link } from '@inertiajs/react';
+﻿import { Link } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Eye, Pencil, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Trash2, Archive, ArchiveRestore } from 'lucide-react';
 import type { ProjectItem } from '@/pages/projects/index';
 
 interface ProjectsCardViewProps {
@@ -9,9 +9,11 @@ interface ProjectsCardViewProps {
     onDelete: (projectId: number, projectName: string) => void;
     onEdit?: (projectId: number) => void;
     editLoading?: boolean;
+    onArchive?: (projectId: number) => void;
+    onRestore?: (projectId: number) => void;
 }
 
-export function ProjectsCardView({ projects, onDelete, onEdit, editLoading }: ProjectsCardViewProps) {
+export function ProjectsCardView({ projects, onDelete, onEdit, editLoading, onArchive, onRestore }: ProjectsCardViewProps) {
     return (
         <>
             {projects.length > 0 ? (
@@ -80,6 +82,25 @@ export function ProjectsCardView({ projects, onDelete, onEdit, editLoading }: Pr
                                     >
                                         <Pencil className="h-4 w-4" />
                                     </Button>
+                                    {project.archived ? (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            title="Restore"
+                                            onClick={() => onRestore?.(project.id)}
+                                        >
+                                            <ArchiveRestore className="h-4 w-4" />
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            title="Archive"
+                                            onClick={() => onArchive?.(project.id)}
+                                        >
+                                            <Archive className="h-4 w-4" />
+                                        </Button>
+                                    )}
                                     <Button
                                         variant="outline"
                                         size="sm"

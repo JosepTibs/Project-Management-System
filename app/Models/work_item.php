@@ -34,6 +34,8 @@ class work_item extends Model
         'start_date',
         'due_date',
         'progress',
+        'completed_at',
+        'archived_at',
     ];
 
     /**
@@ -47,7 +49,89 @@ class work_item extends Model
             'start_date' => 'date',
             'due_date' => 'date',
             'progress' => 'integer',
+            'completed_at' => 'datetime',
+            'archived_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Bootstrap the model and register the completion timestamp autocast hook.
+     *
+     * Keeps `progress` as the single source of truth: whenever an item is
+     * persisted at 100% completion, `completed_at` is (re)stamped; whenever it
+     * drops back below 100%, the stamp is cleared. This prevents the two
+     * attributes from drifting apart across the various progress update paths.
+     *
+     * @return void
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        static::saving(function (work_item $model) {
+            $model->syncCompletionTimestamp();
+        });
+    }
+
+    /**
+     * Derive the completion timestamp from the current progress value.
+     *
+     * @return void
+     */
+    protected function syncCompletionTimestamp(): void
+    {
+        $wasComplete = (int) ($this->getRawOriginal('progress') ?? 0) === 100;
+        $nowComplete = (int) $this->progress === 100;
+
+        if ($nowComplete && ! $wasComplete) {
+            $this->completed_at = now();
+        } elseif (! $nowComplete) {
+            $this->completed_at = null;
+        }
+    }
+
+    /**
+     * Scope query to only archived work items.
+     */
+    public function scopeArchived($query)
+    {
+        return $query->whereNotNull('archived_at');
+    }
+
+    /**
+     * Scope query to only active (non-archived) work items.
+     */
+    public function scopeNotArchived($query)
+    {
+        return $query->whereNull('archived_at');
+    }
+
+    /**
+     * Determine whether this work item may be archived.
+     *
+     * An item can be archived once it is fully complete. Because completed_at
+     * is the authoritative marker for completion (kept in sync with progress),
+     * it is used as the source of truth here.
+     */
+    public function isArchiveable(): bool
+    {
+        return $this->archived_at === null && $this->completed_at !== null;
+    }
+
+    /**
+     * Archive this work item (reversible).
+     */
+    public function archive(): void
+    {
+        $this->update(['archived_at' => now()]);
+    }
+
+    /**
+     * Restore this work item from the archive.
+     */
+    public function unarchive(): void
+    {
+        $this->update(['archived_at' => null]);
     }
 
     /**

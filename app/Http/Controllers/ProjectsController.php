@@ -9,6 +9,7 @@ use App\Models\work_item_statuses;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 /**
@@ -22,7 +23,7 @@ class ProjectsController extends Controller
      * Returns all projects with creator, member count, work item count,
      * and average completion percentage.
      */
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
         $isPrivileged = $user->roles->contains(function ($role) {
@@ -30,14 +31,27 @@ class ProjectsController extends Controller
         });
 
         $query = projects::with('creator')
-            ->withCount('members', 'workItems')
-            // Calculate average completion percentage from work items
+            ->withCount(['members', 'workItems' => function ($q) {
+                // Only count active (non-archived) work items for the active list.
+                $q->whereNull('archived_at');
+            }])
+            // Calculate average completion percentage from active work items only
             ->selectSub(function ($query) {
                 $query->selectRaw('ROUND(AVG(progress), 2)')
                     ->from('work_items')
-                    ->whereColumn('project_id', 'projects.id');
-            }, 'completion_percentage')
-            ->orderBy('created_at', 'desc');
+                    ->whereColumn('project_id', 'projects.id')
+                    ->whereNull('archived_at');
+            }, 'completion_percentage');
+
+        // Archive filter: default (no param) shows active; archived=1 lists archived.
+        $archived = $request->input('project_archived');
+        if ($archived === '1' || $archived === 'true') {
+            $query->archived();
+        } else {
+            $query->notArchived();
+        }
+
+        $query->orderBy('created_at', 'desc');
 
         // Non-admin/manager users only see the projects they are a member of.
         if (!$isPrivileged) {
@@ -58,11 +72,13 @@ class ProjectsController extends Controller
                     'members_count' => $project->members_count,
                     'work_items_count' => $project->work_items_count,
                     'completion_percentage' => $project->completion_percentage ?? 0,
+                    'archived' => $project->archived_at !== null,
                 ];
             });
 
         return Inertia::render('projects/index', [
             'projects' => $projects->values(),
+            'archived' => ($archived === '1' || $archived === 'true') ? true : false,
             'statuses' => self::defaultProjectStatuses(),
             'allUsers' => $this->allUsers(),
             'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
@@ -292,11 +308,11 @@ class ProjectsController extends Controller
         $project->loadMissing('members');
         $this->authorize('view', $project);
 
-        $project->load(['creator', 'members.user', 'workItems', 'milestones', 'workItemGroups.workItems', 'status', 'statuses']);
+        $project->load(['creator', 'members.user', 'workItems.attachments.uploader', 'milestones', 'workItemGroups.workItems', 'status', 'statuses']);
 
         $user = auth()->user();
 
-        // Build kanban/gantt/calendar data (mirrors kanban()).
+                // Build kanban/gantt/calendar data (mirrors kanban()).
         $kanbanWorkItems = work_item::where('project_id', $project->id)
             ->with(['status', 'assignee', 'group'])
             ->get();
@@ -304,6 +320,25 @@ class ProjectsController extends Controller
         $statuses = work_item_statuses::where('project_id', $project->id)
             ->orderBy('order')
             ->get(['id', 'name', 'color']);
+
+        // Fetch all attachments across project work items for the Documents tab
+        // Include work_item_id and work_item_title for grouped display
+        $attachments = $project->workItems->flatMap(function ($item) {
+            return $item->attachments ? $item->attachments->map(function ($attachment) use ($item) {
+                return [
+                    'id' => $attachment->id,
+                    'original_name' => $attachment->original_name,
+                    'size' => $attachment->size,
+                    'mime_type' => $attachment->mime_type,
+                    'url' => Storage::disk('public')->url($attachment->path),
+                    'download_url' => route('attachments.download', $attachment),
+                    'uploaded_by' => $attachment->uploader ? ['id' => $attachment->uploader->id, 'name' => $attachment->uploader->name] : null,
+                    'created_at' => $attachment->created_at?->diffForHumans(),
+                    'work_item_id' => $item->id,
+                    'work_item_title' => $item->title,
+                ];
+            }) : [];
+        })->values();
 
         $groupedWorkItems = $kanbanWorkItems->groupBy('status.name')
             ->map(function ($items, $statusName) {
@@ -423,6 +458,7 @@ class ProjectsController extends Controller
             'columns' => $columns,
             'statuses' => $statuses,
             'workItems' => $workItems,
+            'attachments' => $attachments,
             'setup' => [
                 'allUsers' => $this->allUsers(),
                 'statuses' => $project->statuses->sortBy('order')->values()->map(fn ($s) => [
@@ -612,5 +648,43 @@ class ProjectsController extends Controller
         $project->delete();
 
         return redirect()->route('projects.index')->with('success', 'Project Deleted Successfully');
+    }
+
+    /**
+     * Archive a project (reversible) and cascade the archive to its work items.
+     *
+     * A project can only be archived when it has no open work items or
+     * milestones, so archiving never hides active work.
+     */
+    public function archive(projects $project)
+    {
+        $this->authorize('project.archive', $project);
+
+        if (! $project->isArchiveable()) {
+            return redirect()
+                ->back(fallback: route('projects.index'))
+                ->withErrors(['archive' => 'A project can only be archived when all work items and milestones are complete.']);
+        }
+
+        $project->archive();
+
+        return redirect()
+            ->route('projects.index')
+            ->with('success', 'Project archived successfully.');
+    }
+
+    /**
+     * Restore a previously archived project.
+     *
+     * Restoring a project does not automatically restore its work items; those
+     * are restored individually.
+     */
+    public function unarchive(projects $project)
+    {
+        $this->authorize('project.archive', $project);
+
+        $project->unarchive();
+
+        return redirect()->route('projects.index')->with('success', 'Project restored successfully.');
     }
 }
