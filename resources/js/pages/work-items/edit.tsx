@@ -50,7 +50,7 @@ export default function EditWorkItem() {
 
     const [title, setTitle] = useState(workItem.title);
     const [description, setDescription] = useState(workItem.description);
-    const [statusId, setStatusId] = useState(String(workItem.status_id));
+            const [statusId, setStatusId] = useState(workItem.status_id ? String(workItem.status_id) : '');
     const [groupId, setGroupId] = useState(workItem.group_id ? String(workItem.group_id) : 'none');
     const [assigneeId, setAssigneeId] = useState(workItem.assignee_id ? String(workItem.assignee_id) : 'none');
     const [priority, setPriority] = useState(workItem.priority);

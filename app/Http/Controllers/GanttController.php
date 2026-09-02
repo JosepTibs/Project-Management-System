@@ -34,6 +34,8 @@ class GanttController extends Controller
             'project' => [
                 'id' => $project->id,
                 'name' => $project->name,
+                'start_date' => $project->start_date?->format('Y-m-d'),
+                'end_date' => $project->end_date?->format('Y-m-d'),
             ],
             'workItems' => $project->workItems->map(fn ($item) => [
                 'id' => $item->id,
@@ -52,6 +54,7 @@ class GanttController extends Controller
                 'id' => $m->id,
                 'name' => $m->name,
                 'description' => $m->description,
+                'start_date' => $m->start_date?->format('Y-m-d'),
                 'target_date' => $m->target_date->format('Y-m-d'),
                 'completed_at' => $m->completed_at,
                 'completion_percentage' => $m->completion_percentage,

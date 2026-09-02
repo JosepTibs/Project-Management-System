@@ -156,6 +156,14 @@ class ProjectsController extends Controller
         'milestones.*.groups.*.work_items.*.due_date' => 'nullable|date',
         'milestones.*.groups.*.work_items.*.assignee_id' => 'nullable|exists:users,id',
         'milestones.*.groups.*.work_items.*.status_id' => 'nullable|exists:work_item_statuses,id',
+        'milestones.*.work_items' => 'nullable|array',
+        'milestones.*.work_items.*.title' => 'nullable|string|max:255',
+        'milestones.*.work_items.*.description' => 'nullable|string',
+        'milestones.*.work_items.*.priority' => 'nullable|in:low,medium,high,critical',
+        'milestones.*.work_items.*.start_date' => 'nullable|date',
+        'milestones.*.work_items.*.due_date' => 'nullable|date',
+        'milestones.*.work_items.*.assignee_id' => 'nullable|exists:users,id',
+        'milestones.*.work_items.*.status_id' => 'nullable|exists:work_item_statuses,id',
     ]);
 
     $validated['created_by'] = auth()->id();
@@ -259,6 +267,26 @@ class ProjectsController extends Controller
                 'target_date' => $milestone['target_date'] ?? null,
                 'order' => $milestoneIndex + 1,
             ]);
+
+            // Work items attached directly to this milestone (no group).
+            foreach ($milestone['work_items'] ?? [] as $item) {
+                if (empty($item['title'])) {
+                    continue;
+                }
+
+                work_item::create([
+                    'project_id' => $project->id,
+                    'milestone_id' => $milestoneModel->id,
+                    'group_id' => null,
+                    'title' => $item['title'],
+                    'description' => $item['description'] ?? null,
+                    'priority' => $item['priority'] ?? null,
+                    'start_date' => $item['start_date'] ?? null,
+                    'due_date' => $item['due_date'] ?? null,
+                    'assignee_id' => $item['assignee_id'] ?? null,
+                    'status_id' => $item['status_id'] ?? null,
+                ]);
+            }
 
             foreach ($milestone['groups'] ?? [] as $group) {
                 if (empty($group['name'])) {
@@ -411,6 +439,13 @@ class ProjectsController extends Controller
 
         $project->load(['creator', 'members.user', 'workItems.attachments.uploader', 'milestones', 'workItemGroups.workItems', 'workItemGroups.assignees', 'status', 'statuses']);
 
+        $ungroupedByMilestone = work_item::query()
+            ->where('project_id', $project->id)
+            ->whereNull('group_id')
+            ->whereNotNull('milestone_id')
+            ->get()
+            ->groupBy('milestone_id');
+
         $user = auth()->user();
 
                 // Build kanban/gantt/calendar data (mirrors kanban()).
@@ -471,6 +506,14 @@ class ProjectsController extends Controller
             ];
         })->values()->toArray();
 
+        // Items without a status fall into a "" bucket during grouping and
+        // would otherwise never match a status column — surface them in an
+        // explicit "No status" column so they are never silently hidden.
+        $noStatusBucket = collect($groupedWorkItems)->firstWhere('status', '');
+        if ($noStatusBucket) {
+            $columns[] = $noStatusBucket;
+        }
+
         $workItems = $kanbanWorkItems->map(fn ($item) => [
             'id' => $item->id,
             'group_id' => $item->group_id,
@@ -515,6 +558,7 @@ class ProjectsController extends Controller
                         'priority' => $item->priority,
                         'due_date' => $item->due_date?->format('Y-m-d'),
                         'group_id' => $item->group_id,
+                        'milestone_id' => $item->milestone_id,
                         'progress' => $item->progress ?? 0,
                         'description' => $item->description,
                         'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
@@ -606,6 +650,18 @@ class ProjectsController extends Controller
                                     'assignee_id' => $w->assignee_id,
                                     'status_id' => $w->status_id,
                                 ])->values(),
+                            ];
+                        })->values(),
+                        'work_items' => ($ungroupedByMilestone[$m->id] ?? collect())->map(function ($w) {
+                            return [
+                                'id' => $w->id,
+                                'title' => $w->title,
+                                'description' => $w->description,
+                                'priority' => $w->priority,
+                                'start_date' => $w->start_date?->format('Y-m-d'),
+                                'due_date' => $w->due_date?->format('Y-m-d'),
+                                'assignee_id' => $w->assignee_id,
+                                'status_id' => $w->status_id,
                             ];
                         })->values(),
                     ];

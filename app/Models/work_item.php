@@ -27,6 +27,7 @@ class work_item extends Model
         'project_id',
         'status_id',
         'group_id',
+        'milestone_id',
         'title',
         'description',
         'assignee_id',
@@ -191,6 +192,14 @@ class work_item extends Model
     public function group(): BelongsTo
     {
         return $this->belongsTo(work_item_groups::class, 'group_id');
+    }
+
+    /**
+     * Get the milestone that the work item belongs to (ungrouped items).
+     */
+    public function milestone(): BelongsTo
+    {
+        return $this->belongsTo(milestones::class, 'milestone_id');
     }
 
     /**

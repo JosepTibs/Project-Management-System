@@ -22,6 +22,7 @@ interface Milestone {
     id: number;
     name: string;
     description: string;
+    start_date?: string | null;
     target_date: string;
     completed_at: string | null;
     completion_percentage: number;
@@ -66,6 +67,9 @@ interface InteractiveGanttChartProps {
     workItems: WorkItem[];
     milestones: Milestone[];
     workItemGroups: WorkItemGroup[];
+    /** Project window — when set, the timeline always spans at least this range. */
+    projectStartDate?: string | null;
+    projectEndDate?: string | null;
     /** Disables all drag/move/resize/dependency interactions (view-only mode). */
     readOnly?: boolean;
 }
@@ -362,6 +366,8 @@ export default function InteractiveGanttChart({
     workItems,
     milestones,
     workItemGroups,
+    projectStartDate,
+    projectEndDate,
     readOnly = false,
 }: InteractiveGanttChartProps) {
     const [localWorkItems, setLocalWorkItems] = useState<WorkItem[]>(workItems);
@@ -579,11 +585,12 @@ export default function InteractiveGanttChart({
 
         // Build hierarchical list
         for (const [milestoneId, { milestone, groups }] of milestoneGroups) {
+            const milestoneStart = milestone.start_date ? new Date(milestone.start_date) : new Date(milestone.target_date);
             const milestoneTarget = new Date(milestone.target_date);
             result.push({
                 id: `milestone-${milestone.id}`,
                 name: milestone.name,
-                start: milestoneTarget,
+                start: milestoneStart,
                 end: milestoneTarget,
                 type: "milestone",
                 progress: typeof milestone.completion_percentage === "number" ? milestone.completion_percentage : milestone.completed_at ? 100 : 0,
@@ -697,6 +704,11 @@ export default function InteractiveGanttChart({
         // Include preview offset for live feedback
         let allStartDates = items.map((i) => i.start.getTime());
         let allEndDates = items.map((i) => i.end.getTime());
+
+        // Always span at least the project window so the chart reflects
+        // the project's planned range even when no items fill it yet.
+        if (projectStartDate) allStartDates.push(new Date(projectStartDate).getTime());
+        if (projectEndDate) allEndDates.push(new Date(projectEndDate).getTime());
 
         // If dragging a task, expand range to include the preview position
         if (dragState?.mode === "move" && dragState.itemId) {

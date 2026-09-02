@@ -416,8 +416,8 @@ class WorkItemController extends Controller
             'collaborators.*' => 'integer',
             'priority' => 'required|in:low,medium,high,critical',
             'progress' => 'nullable|integer|min:0|max:100',
-            'start_date' => 'nullable|date',
-            'due_date' => 'required|date',
+                        'start_date' => 'nullable|date',
+            'due_date' => 'nullable|date',
         ]);
 
         $validated = $this->applyScheduleConstraint($request, $project, $validated);
@@ -499,8 +499,8 @@ class WorkItemController extends Controller
             'assignee_id' => 'nullable|integer|exists:users,id',
             'priority' => 'required|in:low,medium,high,critical',
             'progress' => 'nullable|integer|min:0|max:100',
-            'start_date' => 'nullable|date',
-            'due_date' => 'required|date',
+                        'start_date' => 'nullable|date',
+            'due_date' => 'nullable|date',
         ]);
         $validated = $this->applyScheduleConstraint($request, $project, $validated);
         // Store old values to detect changes for event dispatching

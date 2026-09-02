@@ -35,6 +35,7 @@ interface Milestone {
     id: number;
     name: string;
     description: string;
+    start_date: string | null;
     target_date: string;
     completed_at: string | null;
     completion_percentage: number;
@@ -51,7 +52,7 @@ interface WorkItemGroup {
 }
 
 interface GanttPageProps extends Record<string, unknown> {
-    project: { id: number; name: string };
+    project: { id: number; name: string; start_date?: string | null; end_date?: string | null };
     workItems: WorkItem[];
     milestones: Milestone[];
     workItemGroups: WorkItemGroup[];
@@ -121,6 +122,8 @@ export default function Gantt() {
                             workItems={workItems}
                             milestones={milestones}
                             workItemGroups={workItemGroups}
+                            projectStartDate={project.start_date ?? null}
+                            projectEndDate={project.end_date ?? null}
                         />
                     )}
                     {currentView === 'calendar' && (

@@ -458,7 +458,7 @@ export default function WorkItemShow() {
                                     <Layers className="h-3.5 w-3.5" />
                                     Group
                                 </span>
-                                <span className="text-sm font-medium text-right truncate">{workItem.group?.name || '—'}</span>
+                                <span className="text-sm font-medium text-right truncate">{workItem.group?.name || 'Independent'}</span>
                             </div>
 
                             <div className="flex items-center justify-between gap-3">
