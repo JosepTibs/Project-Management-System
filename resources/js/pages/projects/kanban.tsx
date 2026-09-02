@@ -33,6 +33,7 @@ interface KanbanPageProps extends Record<string, unknown> {
     project: {
         id: number;
         name: string;
+        created_by?: number;
     };
     columns: KanbanColumnData[];
     statuses: StatusData[];
@@ -43,6 +44,12 @@ interface KanbanPageProps extends Record<string, unknown> {
 
 export default function Kanban() {
     const { project, columns, statuses, workItems, milestones, workItemGroups } = usePage<KanbanPageProps>().props;
+    const userRoles: string[] = (usePage<any>().props.auth?.roles ?? []) as string[];
+    const authUserId = (usePage<any>().props.auth?.user?.id ?? null) as number | null;
+    const isAdmin = userRoles.some((r) => ['admin', 'superadmin'].includes(r.toLowerCase()));
+    const isManager = !isAdmin && userRoles.some((r) => r.toLowerCase().includes('manager'));
+    const projectCreatedBy = Number(usePage<any>().props.project?.created_by ?? null);
+    const canManageProject = isAdmin || (isManager && projectCreatedBy === Number(authUserId));
     const params = new URLSearchParams(window.location.search);
     const initialView = (params.get('view') as 'kanban' | 'gantt' | 'calendar') || 'kanban';
     const [currentView, setCurrentView] = useState<'kanban' | 'gantt' | 'calendar'>(initialView);
@@ -84,7 +91,12 @@ export default function Kanban() {
 
                 <div className="flex-1 overflow-hidden">
                     {currentView === 'kanban' && (
-                        <KanbanBoard columns={columns} statuses={statuses} />
+                        <KanbanBoard
+                            columns={columns}
+                            statuses={statuses}
+                            authUserId={authUserId}
+                            canManage={canManageProject}
+                        />
                     )}
                     {currentView === 'gantt' && (
                         <InteractiveGanttChart
@@ -92,6 +104,7 @@ export default function Kanban() {
                             workItems={workItems || []}
                             milestones={milestones || []}
                             workItemGroups={workItemGroups || []}
+                            readOnly={!canManageProject}
                         />
                     )}
                     {currentView === 'calendar' && (

@@ -17,6 +17,7 @@ import {
     AlertDialogTitle,
     AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import { Input } from '@/components/ui/input';
 import { ArrowLeft, Calendar, User as UserIcon, Users, Layers, Paperclip, Pencil, Trash2 } from 'lucide-react';
 import CommentSection from '@/components/comments/comment-section';
 import FileAttachmentUploader from '@/components/attachments/file-attachment-uploader';
@@ -73,6 +74,26 @@ interface WorkItemData {
     project: Project | null;
 }
 
+interface DependencyItem {
+    id: number;
+    title: string;
+    progress: number;
+    type: string;
+    lag: number;
+    status: Status | null;
+}
+
+const DEPENDENCY_TYPE_LABELS: Record<string, string> = {
+    finish_to_start: 'Finish → Start',
+    start_to_start: 'Start → Start',
+    start_to_finish: 'Start → Finish',
+    finish_to_finish: 'Finish → Finish',
+};
+
+function dependencyTypeLabel(type: string) {
+    return DEPENDENCY_TYPE_LABELS[type] ?? type.replace(/_/g, ' ');
+}
+
 interface ReplyData {
     id: number;
     content: string;
@@ -94,6 +115,11 @@ interface ShowPageProps extends Record<string, unknown> {
     attachments: AttachmentData[];
     comments: CommentData[];
     auth: { user: User };
+    predecessors: DependencyItem[];
+    successors: DependencyItem[];
+    blockedStartReasons: string[];
+    blockedFinishReasons: string[];
+    canBypassGate: boolean;
     filters: {
         statuses: WorkItemSheetOption[];
         groups: WorkItemSheetOption[];
@@ -123,8 +149,103 @@ function formatDate(value: string | null) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+/**
+ * Non-draggable progress editor shown to users allowed to update this item's
+ * progress (admins/managers, or members assigned to / collaborating on it).
+ * Type a value 0-100 and press Save; commits to the progress-only endpoint.
+ */
+function ProgressEditor({
+    projectId,
+    workItemId,
+    initialProgress,
+}: {
+    projectId: number;
+    workItemId: number;
+    initialProgress: number;
+}) {
+    const [value, setValue] = useState(String(initialProgress));
+    const [saving, setSaving] = useState(false);
+    // Shown value follows saves because page props stay stale under preserveState.
+    const [shownProgress, setShownProgress] = useState(initialProgress);
+
+    const parsed = Number(value);
+    const isValid = value !== '' && !Number.isNaN(parsed) && parsed >= 0 && parsed <= 100;
+    const changed = Math.round(parsed) !== shownProgress;
+
+    const save = () => {
+        if (!isValid || saving) return;
+        const rounded = Math.round(parsed);
+        setSaving(true);
+        router.patch(
+            `/projects/${projectId}/work-items/${workItemId}/progress`,
+            { progress: rounded },
+            {
+                preserveScroll: true,
+                preserveState: true,
+                onSuccess: () => {
+                    setShownProgress(rounded);
+                    setValue(String(rounded));
+                },
+                onError: () => setValue(String(shownProgress)),
+                onFinish: () => setSaving(false),
+            },
+        );
+    };
+
+    return (
+        <div className="pt-1 border-t">
+            <div className="flex items-center justify-between mb-1.5 pt-3">
+                <span className="text-sm text-muted-foreground">Progress</span>
+                <div className="flex items-center gap-1.5">
+                    <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={value}
+                        disabled={saving}
+                        aria-label="Progress percentage"
+                        onChange={(e) => setValue(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') save();
+                            if (e.key === 'Escape') setValue(String(shownProgress));
+                        }}
+                        className="h-7 w-16 text-right tabular-nums text-sm"
+                    />
+                    <span className="text-sm font-medium">%</span>
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-xs"
+                        disabled={!isValid || !changed || saving}
+                        onClick={save}
+                    >
+                        Save
+                    </Button>
+                </div>
+            </div>
+            <Progress value={shownProgress} className="h-2" />
+        </div>
+    );
+}
+
 export default function WorkItemShow() {
-    const { backUrl, workItems: workItem, attachments, comments, auth, filters } = usePage<ShowPageProps>().props;
+    const { backUrl, workItems: workItem, attachments, comments, auth, filters, predecessors, successors, blockedStartReasons, blockedFinishReasons, canBypassGate } = usePage<ShowPageProps>().props;
+    // Role tiers: admins edit everything; managers only items inside
+    // projects they own; members work via progress/status on their own items.
+    const userRoles: string[] = ((auth as any)?.roles ?? []) as string[];
+    const isAdmin = userRoles.some((r) => ['admin', 'superadmin'].includes(r.toLowerCase()));
+    const isManager = !isAdmin && userRoles.some((r) => r.toLowerCase().includes('manager'));
+    const canManageProject =
+        isAdmin ||
+        (isManager && Number((workItem.project as { created_by?: number } | null)?.created_by) === Number(auth.user.id));
+    // Progress editing mirrors the backend selfUpdate gate: privileged users,
+    // or members assigned to / collaborating on this item.
+    const canEditProgress =
+        canManageProject ||
+        Number(workItem.assignee_id) === Number(auth.user.id) ||
+        (workItem.collaborators ?? []).includes(auth.user.id);
+    const isStartBlocked = !canBypassGate && blockedStartReasons.length > 0;
+    const isFinishBlocked = !canBypassGate && blockedFinishReasons.length > 0;
     const [sheetOpen, setSheetOpen] = useState(false);
 
     const initialWorkItem: EditWorkItemData = {
@@ -176,18 +297,22 @@ export default function WorkItemShow() {
                         </div>
                         <h1 className="mt-1 text-2xl font-bold leading-tight">{workItem.title}</h1>
                     </div>
-
+                    
+                    {canManageProject && (
                     <div className="flex items-center gap-2 shrink-0">
-                        <Button variant="outline" size="sm" onClick={() => setSheetOpen(true)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                        </Button>
+                        
+                            <Button variant="outline" size="sm" onClick={() => setSheetOpen(true)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Edit
+                            </Button>
+                       
                         <AlertDialog>
                             <AlertDialogTrigger asChild>
                                 <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700">
                                     <Trash2 className="mr-2 h-4 w-4" />
                                     Delete
                                 </Button>
+                                
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                                 <AlertDialogHeader>
@@ -205,12 +330,86 @@ export default function WorkItemShow() {
                             </AlertDialogContent>
                         </AlertDialog>
                     </div>
+                     )}
                 </div>
 
                 {/* Main split: primary content (left) + metadata sidebar (right) */}
                 <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 items-start">
                     {/* Primary column */}
                     <div className="flex flex-col gap-4 min-w-0">
+                        {(isStartBlocked || isFinishBlocked) && (
+                            <div className={`rounded-lg border p-4 text-sm ${isStartBlocked ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300' : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'}`}>
+                                <p className="font-semibold">
+                                    {isStartBlocked ? 'Blocked — this work item can\u0027t be started yet.' : 'Finish gated — this work item can\u0027t be marked Done yet.'}
+                                </p>
+                                <ul className="mt-1 list-disc pl-5">
+                                    {(isStartBlocked ? blockedStartReasons : blockedFinishReasons).map((reason) => (
+                                        <li key={reason}>{reason}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {predecessors.length > 0 && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg">Depends on ({predecessors.length})</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                    {predecessors.map((dep) => {
+                                        const done = dep.progress >= 100;
+                                        const started = dep.progress > 0;
+                                        const satisfied =
+                                            dep.type === 'finish_to_start' || dep.type === 'finish_to_finish'
+                                                ? done
+                                                : started;
+                                        return (
+                                            <Link
+                                                key={dep.id}
+                                                href={`/projects/${workItem.project!.id}/work-items/${dep.id}`}
+                                                className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-muted/40"
+                                            >
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-medium">{dep.title}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {dependencyTypeLabel(dep.type)}{dep.lag > 0 ? ` · +${dep.lag}d` : ''} · {dep.progress}%
+                                                    </p>
+                                                </div>
+                                                <Badge variant={satisfied ? 'default' : 'secondary'} className={satisfied ? 'bg-green-600 hover:bg-green-700' : ''}>
+                                                    {satisfied ? 'Met' : 'Waiting'}
+                                                </Badge>
+                                            </Link>
+                                        );
+                                    })}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {successors.length > 0 && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="text-lg">Feeds into ({successors.length})</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                    {successors.map((dep) => (
+                                        <Link
+                                            key={dep.id}
+                                            href={`/projects/${workItem.project!.id}/work-items/${dep.id}`}
+                                            className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-muted/40"
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate font-medium">{dep.title}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {dependencyTypeLabel(dep.type)}{dep.lag > 0 ? ` · +${dep.lag}d` : ''} · {dep.progress}%
+                                                </p>
+                                            </div>
+                                            <Badge variant="outline">{dep.status?.name || '—'}</Badge>
+                                        </Link>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        )}
+
                         {workItem.description && (
                             <Card>
                                 <CardContent className="pt-6">
@@ -288,13 +487,21 @@ export default function WorkItemShow() {
                                 <span className="text-sm font-medium text-right">{formatDate(workItem.due_date)}</span>
                             </div>
 
-                            <div className="pt-1 border-t">
-                                <div className="flex items-center justify-between mb-1.5 pt-3">
-                                    <span className="text-sm text-muted-foreground">Progress</span>
-                                    <span className="text-sm font-medium">{workItem.progress}%</span>
+                            {canEditProgress ? (
+                                <ProgressEditor
+                                    projectId={workItem.project!.id}
+                                    workItemId={workItem.id}
+                                    initialProgress={workItem.progress}
+                                />
+                            ) : (
+                                <div className="pt-1 border-t">
+                                    <div className="flex items-center justify-between mb-1.5 pt-3">
+                                        <span className="text-sm text-muted-foreground">Progress</span>
+                                        <span className="text-sm font-medium">{workItem.progress}%</span>
+                                    </div>
+                                    <Progress value={workItem.progress} className="h-2" />
                                 </div>
-                                <Progress value={workItem.progress} className="h-2" />
-                            </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

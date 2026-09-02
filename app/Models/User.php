@@ -104,4 +104,69 @@ class User extends Authenticatable
     {
         return $this->morphMany(Notification::class, 'notifiable')->orderBy('created_at', 'desc');
     }
+
+    /**
+     * Determine whether this user has the given role (case-insensitive).
+     */
+    public function hasRole(string $role): bool
+    {
+        return $this->roles->contains(fn ($r) => strtolower($r->name) === strtolower($role));
+    }
+
+    /**
+     * Determine whether this user has the given permission through their roles.
+     */
+    public function hasPermission(string $permission): bool
+    {
+        $this->loadMissing('roles.permissions');
+
+        return $this->roles->contains(fn ($role) => $role->permissions->contains('name', $permission));
+    }
+
+    /**
+     * Whether the user can bypass dependency gating (Superadmin / Admin).
+     */
+    public function isWorkflowPrivileged(): bool
+    {
+        return $this->roles->contains(fn ($role) => in_array(strtolower($role->name), ['superadmin', 'admin']));
+    }
+
+    /**
+     * Whether the user is an admin-level role (superadmin or admin) and sees
+     * every project regardless of ownership.
+     */
+    public function isAdminLevel(): bool
+    {
+        return $this->roles->contains(fn ($role) => in_array(strtolower($role->name), ['superadmin', 'admin']));
+    }
+
+    /**
+     * Whether the user holds a manager role (e.g. "manager" or
+     * "project manager"). Managers are scoped to projects they own.
+     */
+    public function isManagerRole(): bool
+    {
+        return $this->roles->contains(fn ($role) => str_contains(strtolower($role->name), 'manager'));
+    }
+
+    /**
+     * Whether the user holds the plain "member" role.
+     */
+    public function isMemberRole(): bool
+    {
+        return $this->hasRole('member');
+    }
+
+    /**
+     * Whether the user may fully manage (edit/delete/archive) the given
+     * project: admins always; managers only when they own it.
+     */
+    public function canManageProject(projects $project): bool
+    {
+        if ($this->isAdminLevel()) {
+            return true;
+        }
+
+        return $this->isManagerRole() && (int) $project->created_by === (int) $this->id;
+    }
 }

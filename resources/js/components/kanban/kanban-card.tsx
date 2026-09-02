@@ -10,6 +10,9 @@ interface KanbanCardData {
     assignee_name: string | null;
     due_date: string | null;
     group_name: string | null;
+    /** Ownership context for member-restricted dragging. */
+    assignee_id?: number | null;
+    collaborator_ids?: number[];
 }
 
 function getPriorityVariant(priority: string) {
@@ -22,7 +25,7 @@ function getPriorityVariant(priority: string) {
     }
 }
 
-export default function KanbanCard({ card }: { card: KanbanCardData }) {
+export default function KanbanCard({ card, disabled = false }: { card: KanbanCardData; disabled?: boolean }) {
     const {
         attributes,
         listeners,
@@ -33,6 +36,7 @@ export default function KanbanCard({ card }: { card: KanbanCardData }) {
     } = useSortable({
         id: card.id,
         data: { type: 'card', card },
+        disabled,
     });
 
     const style = {
@@ -45,9 +49,15 @@ export default function KanbanCard({ card }: { card: KanbanCardData }) {
         <div
             ref={setNodeRef}
             style={style}
+            data-card-id={card.id}
             {...attributes}
-            {...listeners}
-            className="bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-border cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow"
+            {...(disabled ? {} : listeners)}
+            className={`bg-white dark:bg-gray-800 p-3 rounded-lg shadow-sm border border-border hover:shadow-md transition-shadow ${
+                disabled
+                    ? 'cursor-default opacity-80'
+                    : 'cursor-grab active:cursor-grabbing'
+            }`}
+            title={disabled ? "This isn't your work item" : undefined}
         >
             <div className="flex items-start justify-between gap-2 mb-2">
                 <p className="text-sm font-medium leading-snug">{card.title}</p>

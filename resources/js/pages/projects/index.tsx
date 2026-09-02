@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, FileSpreadsheet } from 'lucide-react';
 import { useState, useMemo, useEffect } from 'react';
 import { ViewToggle } from '@/components/tables/view-toggle';
 import { ProjectsCardView } from '@/components/tables/projects-card-view';
@@ -32,6 +32,7 @@ export interface ProjectItem {
     members_count: number;
     work_items_count: number;
     completion_percentage: number;
+    end_date: string | null;
     archived?: boolean;
 }
 
@@ -75,10 +76,14 @@ export default function ProjectsIndex() {
         milestones: NestedMilestone[];
     } | null>(null);
     const [editLoading, setEditLoading] = useState(false);
-    // Check if user has admin or manager role (only they may add projects)
+    // Role tiers: admins manage everything; managers may create projects but
+    // only edit ones they own; members are view-only.
     const userRoles = auth?.roles || [];
-    const canManageProjects = userRoles.includes('admin') || userRoles.includes('manager');
-
+    const isAdmin = userRoles.some((r) => ['admin', 'superadmin'].includes(r.toLowerCase()));
+    const isManager = !isAdmin && userRoles.some((r) => r.toLowerCase().includes('manager'));
+    const canManageProjects = !userRoles.includes('member');
+    const canManageProject = (project: { created_by: number }) =>
+        isAdmin || (isManager && Number(project.created_by) === Number(auth?.user?.id));
     // Persist view preference
     useEffect(() => {
         const saved = localStorage.getItem('projects-view-mode');
@@ -145,13 +150,27 @@ export default function ProjectsIndex() {
                     <h1 className="text-2xl font-bold">Projects</h1>
                     <div className="flex items-center gap-2">
                         <ViewToggle viewMode={viewMode} onViewChange={toggleView} />
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setArchivedView(!archived)}
+                        {/* Export what you see: the download mirrors the current
+                            search text and archived filter. Plain <a> so the
+                            browser handles the file download directly. */}
+                        <a
+                            href={`/projects/export?search=${encodeURIComponent(search)}${archived ? '&project_archived=1' : ''}`}
+                            download
                         >
-                            {archived ? 'View Active' : 'View Archived'}
-                        </Button>
+                            <Button variant="outline" size="sm" title={`Export ${filteredProjects.length} projects as Excel`}>
+                                <FileSpreadsheet className="mr-2 h-4 w-4" />
+                                Export Excel
+                            </Button>
+                        </a>
+                        {canManageProjects && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setArchivedView(!archived)}
+                            >
+                                {archived ? 'View Active' : 'View Archived'}
+                            </Button>
+                        )}
                         {canManageProjects && (
                             <Button onClick={() => setCreateOpen(true)}>
                                 <Plus className="mr-2 h-4 w-4" />
@@ -171,12 +190,19 @@ export default function ProjectsIndex() {
                         className="pl-9"
                     />
                 </div>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+    {filteredProjects.filter(p => p.completion_percentage >= 100).length} done ·{' '}
+    {filteredProjects.filter(p =>
+        p.end_date && p.completion_percentage < 100 &&
+        new Date(`${p.end_date}T00:00:00`).getTime() < new Date().setHours(0,0,0,0)
+    ).length} overdue
+</div>
 
                 {/* View Content */}
                 {viewMode === 'table' ? (
-                    <ProjectsTableView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} onArchive={handleArchive} onRestore={handleRestore} />
+                    <ProjectsTableView projects={filteredProjects} canManageProjects={canManageProjects} canManageProject={canManageProject} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} onArchive={handleArchive} onRestore={handleRestore} />
                 ) : (
-                    <ProjectsCardView projects={filteredProjects} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} onArchive={handleArchive} onRestore={handleRestore} />
+                    <ProjectsCardView projects={filteredProjects} canManageProjects={canManageProjects} canManageProject={canManageProject} onDelete={handleDelete} onEdit={handleEditClick} editLoading={editLoading} onArchive={handleArchive} onRestore={handleRestore} />
                 )}
             </div>
 

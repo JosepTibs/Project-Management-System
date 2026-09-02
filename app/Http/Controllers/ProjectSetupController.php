@@ -19,7 +19,7 @@ class ProjectSetupController extends Controller
 {
     public function show(projects $project)
     {
-        $project->load(['members.user', 'statuses', 'milestones.work_item_groups.workItems']);
+        $project->load(['members.user', 'statuses', 'milestones.work_item_groups.workItems', 'milestones.work_item_groups.assignees']);
 
         $allUsers = User::with('roles')
             ->select('id', 'username', 'email', 'fname', 'lname')
@@ -64,6 +64,8 @@ class ProjectSetupController extends Controller
                     'description' => $g->description,
                     'start_date' => $g->start_date?->format('Y-m-d'),
                     'end_date' => $g->end_date?->format('Y-m-d'),
+                    'progress' => (int) $g->progress,
+                    'assignee_ids' => $g->assignees->pluck('id')->values(),
                     'work_items' => $g->workItems->map(fn ($w) => [
                         'id' => $w->id,
                         'title' => $w->title,
@@ -80,11 +82,11 @@ class ProjectSetupController extends Controller
 
     public function groupsIndex(projects $project)
     {
-        $project->load(['workItemGroups.milestone', 'workItemGroups.workItems.status', 'workItemGroups.workItems.assignee']);
+        $project->load(['workItemGroups.milestone', 'workItemGroups.workItems.status', 'workItemGroups.workItems.assignee', 'workItemGroups.assignees']);
 
         $groups = $project->workItemGroups->sortByDesc('id')->map(function ($group) {
             $items = $group->workItems;
-            $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : 0;
+            $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : (int) $group->progress;
 
             return [
                 'id' => $group->id,
@@ -95,6 +97,8 @@ class ProjectSetupController extends Controller
                 'milestone_id' => $group->milestone_id,
                 'milestone' => $group->milestone ? ['id' => $group->milestone->id, 'name' => $group->milestone->name] : null,
                 'completion_percentage' => $avgProgress,
+                'progress' => (int) $group->progress,
+                'assignees' => $group->assignees->map(fn ($a) => ['id' => $a->id, 'name' => $a->name])->values(),
                 'items_count' => $items->count(),
                 'work_items' => $items->map(function ($item) {
                     return [
@@ -121,7 +125,7 @@ class ProjectSetupController extends Controller
 
     public function apiShow(projects $project)
     {
-        $project->load(['members.user', 'statuses', 'milestones.work_item_groups.workItems']);
+        $project->load(['members.user', 'statuses', 'milestones.work_item_groups.workItems', 'milestones.work_item_groups.assignees']);
 
         $allUsers = User::with('roles')
             ->select('id', 'username', 'email', 'fname', 'lname')
@@ -166,6 +170,8 @@ class ProjectSetupController extends Controller
                     'description' => $g->description,
                     'start_date' => $g->start_date?->format('Y-m-d'),
                     'end_date' => $g->end_date?->format('Y-m-d'),
+                    'progress' => (int) $g->progress,
+                    'assignee_ids' => $g->assignees->pluck('id')->values(),
                     'work_items' => $g->workItems->map(fn ($w) => [
                         'id' => $w->id,
                         'title' => $w->title,
@@ -182,6 +188,11 @@ class ProjectSetupController extends Controller
 
     public function update(Request $request, projects $project)
     {
+        // Restructuring a project (members, milestones, groups, bulk work
+        // items) is admin/manager territory — members are view-only here.
+        $project->loadMissing('members');
+        $this->authorize('update', $project);
+
         $data = $request->validate([
             // Project fields
             'name' => 'sometimes|string|max:255',
@@ -205,6 +216,9 @@ class ProjectSetupController extends Controller
             'milestones.*.groups.*.description' => 'nullable|string',
             'milestones.*.groups.*.start_date' => 'nullable|date',
             'milestones.*.groups.*.end_date' => 'nullable|date',
+            'milestones.*.groups.*.progress' => 'nullable|integer|min:0|max:100',
+            'milestones.*.groups.*.assignee_ids' => 'nullable|array',
+            'milestones.*.groups.*.assignee_ids.*' => 'exists:users,id',
             'milestones.*.groups.*.work_items' => 'nullable|array',
             'milestones.*.groups.*.work_items.*.id' => 'nullable|integer',
             'milestones.*.groups.*.work_items.*.title' => 'nullable|string|max:255',
@@ -325,7 +339,7 @@ class ProjectSetupController extends Controller
                         continue;
                     }
                     $groupData = array_merge(
-                        Arr::only($group, ['name', 'description', 'start_date', 'end_date']),
+                        Arr::only($group, ['name', 'description', 'start_date', 'end_date', 'progress']),
                         ['milestone_id' => $milestoneModel->id],
                     );
                     $groupModel = isset($group['id']) && $group['id'] > 0
@@ -333,6 +347,11 @@ class ProjectSetupController extends Controller
                         : $milestoneModel->work_item_groups()->create($groupData + ['project_id' => $project->id]);
                     if (isset($group['id']) && $group['id'] > 0) {
                         $groupModel->update($groupData);
+                    }
+
+                    // Sync the members assigned to work on this group (multiple assignees)
+                    if (isset($group['assignee_ids'])) {
+                        $groupModel->assignees()->sync($group['assignee_ids'] ?? []);
                     }
 
                     // Work items under this group
@@ -351,6 +370,16 @@ class ProjectSetupController extends Controller
                             work_item::findOrFail($item['id'])->update($itemData);
                         } else {
                             work_item::create($itemData + ['project_id' => $project->id]);
+                        }
+                    }
+
+                    // Auto-derive group progress from its work items when it has
+                    // any; otherwise keep the manually entered value.
+                    $groupModel->refreshRelation('workItems');
+                    if ($groupModel->workItems()->count() > 0) {
+                        $derived = (int) round($groupModel->workItems()->avg('progress') ?? 0);
+                        if ($groupModel->progress !== $derived) {
+                            $groupModel->update(['progress' => $derived]);
                         }
                     }
                 }

@@ -11,19 +11,33 @@ class RoleHasPermissionSeeder extends Seeder
 {
     public function run(): void
     {
-        // Give all permissions to Admin (role_id = 1)
+        // Superadmin gets every permission, including the user-deletion one.
+        $superadminRole = roles::where('name', 'Superadmin')->first();
+        if ($superadminRole) {
+            $allPermissionIds = permissions::pluck('id')->toArray();
+            foreach ($allPermissionIds as $permId) {
+                role_has_permissions::create([
+                    'role_id' => $superadminRole->id,
+                    'permission_id' => $permId,
+                ]);
+            }
+        }
+
+        // Admin gets all permissions except 'delete users' (reserved for Superadmin).
         $adminRole = roles::where('name', 'Admin')->first();
-        $allPermissionIds = permissions::pluck('id')->toArray();
-        foreach ($allPermissionIds as $permId) {
-            role_has_permissions::create([
-                'role_id' => $adminRole->id,
-                'permission_id' => $permId,
-            ]);
+        if ($adminRole) {
+            $adminPermissions = permissions::whereNotIn('name', ['delete users'])->pluck('id')->toArray();
+            foreach ($adminPermissions as $permId) {
+                role_has_permissions::create([
+                    'role_id' => $adminRole->id,
+                    'permission_id' => $permId,
+                ]);
+            }
         }
 
         // Project Manager gets most permissions except delete
         $pmRole = roles::where('name', 'Project Manager')->first();
-        $pmPermissions = permissions::whereNotIn('name', ['delete projects', 'delete work items'])->pluck('id')->toArray();
+        $pmPermissions = permissions::whereNotIn('name', ['delete projects', 'delete work items', 'delete users'])->pluck('id')->toArray();
         foreach ($pmPermissions as $permId) {
             role_has_permissions::create([
                 'role_id' => $pmRole->id,

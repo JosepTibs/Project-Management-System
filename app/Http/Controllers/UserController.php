@@ -50,7 +50,7 @@ class UserController extends Controller
 
     public function create()
     {
-        $allRoles = roles::all(['id', 'name']);
+        $allRoles = $this->assignableRoles();
 
         return Inertia::render('users/create', [
             'roles' => $allRoles,
@@ -69,6 +69,8 @@ class UserController extends Controller
             'password' => 'required|string|min:8',
             'role_id' => 'required|exists:roles,id',
         ]);
+
+        $this->validateRoleAssignment($validated);
 
         $user = User::create([
             'username' => $validated['username'],
@@ -124,7 +126,7 @@ class UserController extends Controller
     public function edit(User $user)
     {
         $user->load('roles');
-        $allRoles = roles::all(['id', 'name']);
+        $allRoles = $this->assignableRoles();
 
         return Inertia::render('users/edit', [
             'user' => [
@@ -154,6 +156,8 @@ class UserController extends Controller
             'role_id' => 'required|exists:roles,id',
         ]);
 
+        $this->validateRoleAssignment($validated);
+
         $user->update([
             'username' => $validated['username'],
             'fname' => $validated['fname'],
@@ -181,11 +185,46 @@ class UserController extends Controller
         return redirect()->route('users.index')->with('success', 'User updated successfully.');
     }
 
+    /**
+     * Roles the current user may assign. The Superadmin role can only be
+     * granted by an existing Superadmin, preventing privilege escalation
+     * through the regular Admin user-management screens.
+     */
+    private function assignableRoles()
+    {
+        $query = roles::query();
+
+        if (! auth()->user()?->hasRole('superadmin')) {
+            $query->where('name', '!=', 'Superadmin');
+        }
+
+        return $query->get(['id', 'name']);
+    }
+
+    /**
+     * Reject role assignments that escalate beyond the current user's rights.
+     */
+    private function validateRoleAssignment(array $validated)
+    {
+        $role = roles::find($validated['role_id'] ?? null);
+
+        if ($role && strtolower($role->name) === 'superadmin' && ! auth()->user()?->hasRole('superadmin')) {
+            abort(403, 'Only a Superadmin can assign the Superadmin role.');
+        }
+    }
+
     public function destroy(User $user)
     {
+        $this->authorize('delete-user', $user);
+
         // Prevent deleting yourself
         if ($user->id === auth()->id()) {
             return redirect()->route('users.index')->with('error', 'You cannot delete your own account.');
+        }
+
+        // Prevent deleting an existing Superadmin
+        if ($user->roles->contains(fn ($role) => strtolower($role->name) === 'superadmin')) {
+            return redirect()->route('users.index')->with('error', 'You cannot delete a Superadmin account.');
         }
 
         $user->delete();

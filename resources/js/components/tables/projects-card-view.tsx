@@ -1,11 +1,16 @@
-﻿import { Link } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Eye, Pencil, Trash2, Archive, ArchiveRestore } from 'lucide-react';
 import type { ProjectItem } from '@/pages/projects/index';
-
+import { getDueStatus } from '@/lib/project-due';
 interface ProjectsCardViewProps {
     projects: ProjectItem[];
+    /** False for members — shows an "ask to be assigned" empty state instead of "create one". */
+    canManageProjects?: boolean;
+    /** Per-project ownership check (managers may only manage projects they own). */
+    canManageProject?: (project: ProjectItem) => boolean;
     onDelete: (projectId: number, projectName: string) => void;
     onEdit?: (projectId: number) => void;
     editLoading?: boolean;
@@ -13,7 +18,9 @@ interface ProjectsCardViewProps {
     onRestore?: (projectId: number) => void;
 }
 
-export function ProjectsCardView({ projects, onDelete, onEdit, editLoading, onArchive, onRestore }: ProjectsCardViewProps) {
+export function ProjectsCardView({ projects, canManageProjects = true, canManageProject, onDelete, onEdit, editLoading, onArchive, onRestore }: ProjectsCardViewProps) {
+    const mayManage = (project: ProjectItem) => canManageProject ? canManageProject(project) : canManageProjects;
+
     return (
         <>
             {projects.length > 0 ? (
@@ -41,13 +48,26 @@ export function ProjectsCardView({ projects, onDelete, onEdit, editLoading, onAr
                                         <span className="text-muted-foreground">Prefix</span>
                                         <span className="font-mono text-xs">{project.item_prefix}</span>
                                     </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-muted-foreground">Work Items</span>
-                                        <span className="font-medium">{project.work_items_count}</span>
-                                    </div>
+                                    
                                     <div className="flex items-center justify-between">
                                         <span className="text-muted-foreground">Members</span>
                                         <span className="font-medium">{project.members_count}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-muted-foreground">Due Date</span>
+                                        {project.end_date && (
+                                      <div className="flex items-center gap-2">
+                                       
+                                        {(() => {
+                                          const { label, className } = getDueStatus(project.end_date, project.completion_percentage);
+                                          return (
+                                            <Badge variant="outline" className={`${className} border-0 font-medium`}>
+                                              {label}
+                                            </Badge>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
                                     </div>
                                     <div className="mt-3">
                                         <div className="flex items-center justify-between text-sm mb-1">
@@ -73,43 +93,47 @@ export function ProjectsCardView({ projects, onDelete, onEdit, editLoading, onAr
                                             <Eye className="h-4 w-4" />
                                         </Button>
                                     </Link>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        title="Edit"
-                                        onClick={() => onEdit?.(project.id)}
-                                        disabled={editLoading}
-                                    >
-                                        <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    {project.archived ? (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            title="Restore"
-                                            onClick={() => onRestore?.(project.id)}
-                                        >
-                                            <ArchiveRestore className="h-4 w-4" />
-                                        </Button>
-                                    ) : (
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            title="Archive"
-                                            onClick={() => onArchive?.(project.id)}
-                                        >
-                                            <Archive className="h-4 w-4" />
-                                        </Button>
+                                    {(canManageProjects || canManageProject) && mayManage(project) && (
+                                        <>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                title="Edit"
+                                                onClick={() => onEdit?.(project.id)}
+                                                disabled={editLoading}
+                                            >
+                                                <Pencil className="h-4 w-4" />
+                                            </Button>
+                                            {project.archived ? (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    title="Restore"
+                                                    onClick={() => onRestore?.(project.id)}
+                                                >
+                                                    <ArchiveRestore className="h-4 w-4" />
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    title="Archive"
+                                                    onClick={() => onArchive?.(project.id)}
+                                                >
+                                                    <Archive className="h-4 w-4" />
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-red-600 hover:text-red-700"
+                                                title="Delete"
+                                                onClick={() => onDelete(project.id, project.name)}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </Button>
+                                        </>
                                     )}
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="text-red-600 hover:text-red-700"
-                                        title="Delete"
-                                        onClick={() => onDelete(project.id, project.name)}
-                                    >
-                                        <Trash2 className="h-4 w-4" />
-                                    </Button>
                                 </div>
                             </CardFooter>
                         </Card>
@@ -118,7 +142,11 @@ export function ProjectsCardView({ projects, onDelete, onEdit, editLoading, onAr
             ) : (
                 <Card>
                     <CardContent className="py-12 text-center">
-                        <p className="text-muted-foreground">No projects yet. Create your first project!</p>
+                        <p className="text-muted-foreground">
+                            {canManageProjects
+                                ? 'No projects yet. Create your first project!'
+                                : "You haven't been assigned to any projects yet. Ask an administrator or project manager to add you to a team."}
+                        </p>
                     </CardContent>
                 </Card>
             )}

@@ -88,6 +88,13 @@ export default function Dashboard() {
     const { auth } = usePage<SharedData>().props;
     const user = auth?.user;
 
+    // Role-based dashboard: admins get full audit analytics, managers get
+    // their owned-project scope, members see a personal "My Tasks" view.
+    const roles: string[] = auth?.roles ?? [];
+    const isAdmin = roles.some((r) => ['admin', 'superadmin'].includes(r.toLowerCase()));
+    const isManager = !isAdmin && roles.some((r) => r.toLowerCase().includes('manager'));
+    const isMember = !isAdmin && !isManager;
+
     const totalWork = stats?.total_work_items || 1;
 
     const priorityData = [
@@ -214,6 +221,8 @@ export default function Dashboard() {
                         </CardContent>
                     </Card>
 
+                    {isManager && (
+                    <>
                     <Card className="shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Unassigned</CardTitle>
@@ -237,6 +246,8 @@ export default function Dashboard() {
                             </p>
                         </CardContent>
                     </Card>
+                    </>
+                    )}
                 </div>
 
                 {/* Zoho-style Work Summary & Priority donuts */}
@@ -298,6 +309,7 @@ export default function Dashboard() {
                         </CardContent>
                     </Card>
 
+                    {isManager ? (
                     <Card className="shadow-xs">
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium text-muted-foreground">Tasks Per Assignee</CardTitle>
@@ -312,6 +324,31 @@ export default function Dashboard() {
                             )}
                         </CardContent>
                     </Card>
+                    ) : (
+                    <Card className="shadow-xs">
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium text-muted-foreground">My Tasks</CardTitle>
+                            <CheckSquare className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div className="text-2xl font-bold">{stats?.total_work_items ?? 0}</div>
+                            <p className="text-xs text-muted-foreground">
+                                {stats?.completed_work_items ?? 0} fully complete ·
+                                {stats?.due_this_week ?? 0} due this week
+                            </p>
+                            {recent_work_items.length > 0 && (
+                                <ul className="space-y-1.5">
+                                    {recent_work_items.slice(0, 5).map((item) => (
+                                        <li key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                                            <span className="truncate">{item.title}</span>
+                                            <Badge variant="outline" className="shrink-0 text-[10px]">{item.status}</Badge>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </CardContent>
+                    </Card>
+                    )}
                 </div>
 
                 {/* Throughput Trend */}
@@ -333,9 +370,9 @@ export default function Dashboard() {
                 <Tabs defaultValue="work_items" className="w-full">
                     <div className="flex items-center justify-between pb-2">
                         <TabsList className="bg-muted/60 p-1">
-                            <TabsTrigger value="work_items">Recent Tasks</TabsTrigger>
+                            <TabsTrigger value="work_items">{isMember ? 'My Tasks' : 'Recent Tasks'}</TabsTrigger>
                             <TabsTrigger value="projects">Projects</TabsTrigger>
-                            <TabsTrigger value="activity">Audit Activity</TabsTrigger>
+                            {isAdmin && <TabsTrigger value="activity">Audit Activity</TabsTrigger>}
                         </TabsList>
                     </div>
 
@@ -408,7 +445,8 @@ export default function Dashboard() {
                         </div>
                     </TabsContent>
 
-                    {/* Activity Log Tab */}
+                    {/* Activity Log Tab (admins only) */}
+                    {isAdmin && (
                     <TabsContent value="activity" className="mt-2">
                         <Card className="shadow-xs">
                             <CardContent className="p-6">
@@ -438,6 +476,7 @@ export default function Dashboard() {
                             </CardContent>
                         </Card>
                     </TabsContent>
+                    )}
                 </Tabs>
 
             </div>

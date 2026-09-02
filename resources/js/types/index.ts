@@ -2,6 +2,8 @@ import { LucideIcon } from 'lucide-react';
 
 export interface Auth {
     user: User;
+    /** System roles (e.g. 'member', 'manager', 'admin', 'superadmin'). */
+    roles?: string[];
 }
 
 export interface BreadcrumbItem {
@@ -20,6 +22,8 @@ export interface NavItem {
     icon?: LucideIcon | null;
     isActive?: boolean;
     roles?: string[];
+    /** HTTP method for the link; 'post' renders a logout-style button. */
+    method?: 'get' | 'post';
 }
 
 export interface SharedData {

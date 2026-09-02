@@ -43,7 +43,16 @@ interface UsersPageProps extends Record<string, unknown> {
         search: string | null;
         role: string | null;
     };
-}
+    auth?: {
+        user?: {
+            id: number;
+            name: string;
+            email: string;
+        } | null;
+        roles?: string[];
+        }
+    }
+
 function formatFullName(user: UserItem){
 
     const parts = [user.fname,user.mname,user.lname,user.sname].filter(Boolean);
@@ -52,6 +61,7 @@ function formatFullName(user: UserItem){
 }
 function getRoleBadgeVariant(roleName: string) {
     switch (roleName?.toLowerCase()) {
+        case 'superadmin':
         case 'admin':
             return 'destructive' as const;
         case 'project manager':
@@ -77,7 +87,8 @@ const globalFilterFn: FilterFn<UserItem> = (row, columnId, filterValue: string) 
 const columnHelper = createColumnHelper<UserItem>();
 
 export default function UsersIndex() {
-    const { users, roles, filters } = usePage<UsersPageProps>().props;
+    const { users, roles, filters, auth } = usePage<UsersPageProps>().props;
+    const canDeleteUsers = auth?.roles?.includes('superadmin') ?? false;
     const [globalFilter, setGlobalFilter] = useState(filters.search ?? '');
     const [roleFilter, setRoleFilter] = useState(filters.role ?? '');
     const [sorting, setSorting] = useState<SortingState>([]);
@@ -228,14 +239,16 @@ export default function UsersIndex() {
                                     <Pencil className="h-4 w-4" />
                                 </Button>
                             </Link>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="text-red-600 hover:text-red-700"
-                                onClick={() => handleDelete(user.id, formatFullName(user))}
-                            >
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
+                            {canDeleteUsers && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-red-600 hover:text-red-700"
+                                    onClick={() => handleDelete(user.id, formatFullName(user))}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            )}
                         </div>
                     );
                 },

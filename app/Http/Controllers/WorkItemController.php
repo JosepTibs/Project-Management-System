@@ -37,6 +37,30 @@ class WorkItemController extends Controller
         // Load related status, group, assignee, project, attachments data, and Collaborators
         $workItem->load(['status', 'group', 'assignee', 'project', 'attachments.uploader', 'collaborators']);
 
+        // Dependency context: predecessors (what this depends on) and successors
+        // (what this feeds into), plus type-aware blocking information.
+        $workItem->load(['predecessors.status', 'successors.status']);
+
+        $predecessors = $workItem->predecessors->map(fn ($p) => [
+            'id' => $p->id,
+            'title' => $p->title,
+            'progress' => (int) ($p->progress ?? 0),
+            'type' => $p->pivot->type,
+            'lag' => (int) $p->pivot->lag,
+            'status' => $p->status ? ['id' => $p->status->id, 'name' => $p->status->name] : null,
+        ]);
+
+        $successors = $workItem->successors->map(fn ($s) => [
+            'id' => $s->id,
+            'title' => $s->title,
+            'progress' => (int) ($s->progress ?? 0),
+            'type' => $s->pivot->type,
+            'lag' => (int) $s->pivot->lag,
+            'status' => $s->status ? ['id' => $s->status->id, 'name' => $s->status->name] : null,
+        ]);
+
+        $gates = $workItem->dependencyGates();
+
         // Load project members for the edit sheet filter options
         $project->load('members.user');
 
@@ -132,10 +156,15 @@ class WorkItemController extends Controller
                 'status' => $workItem->status ? ['id' => $workItem->status->id, 'name' => $workItem->status->name] : null,
                 'group' => $workItem->group ? ['id' => $workItem->group->id, 'name' => $workItem->group->name] : null,
                 'assignee' => $workItem->assignee ? ['id' => $workItem->assignee->id, 'name' => $workItem->assignee->name] : null,
-                'project' => $workItem->project ? ['id' => $workItem->project->id, 'name' => $workItem->project->name, 'item_prefix' => $workItem->project->item_prefix] : null,
+                'project' => $workItem->project ? ['id' => $workItem->project->id, 'name' => $workItem->project->name, 'item_prefix' => $workItem->project->item_prefix, 'created_by' => $workItem->project->created_by] : null,
             ],
             'attachments' => $attachments,
             'comments' => $comments,
+            'predecessors' => $predecessors,
+            'successors' => $successors,
+            'blockedStartReasons' => $gates['start'],
+            'blockedFinishReasons' => $gates['finish'],
+            'canBypassGate' => auth()->user()?->isWorkflowPrivileged() ?? false,
             'filters' => [
                 'statuses' => $statuses,
                 'groups' => $groups,
@@ -149,8 +178,26 @@ class WorkItemController extends Controller
      */
     public function globalIndex(Request $request)
     {
-        $query = work_item::with(['status', 'group', 'assignee', 'project']);
+        $query = work_item::with(['status', 'group', 'assignee', 'collaborators', 'project']);
 
+        $user = auth()->user();
+        $isAdmin = $user && $user->isAdminLevel();
+        $isManager = $user && ! $isAdmin && $user->isManagerRole();
+        $isMember = $user && ! $isAdmin && ! $isManager;
+
+        if ($isManager) {
+            // Managers only see work items assigned to them or inside
+            // projects they own.
+            $query->where(function ($q) use ($user) {
+                $q->where('assignee_id', $user->id)
+                    ->orWhereHas('project', fn ($p) => $p->where('created_by', $user->id));
+            });
+        } elseif ($isMember) {
+            $query->where(function ($q) use ($user){
+                $q->where('assignee_id', $user->id)
+                ->orWhereHas('collaborators', fn ($c) => $c->where('user_id', $user->id));
+            });
+        }
         // Search by title or description
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {
@@ -186,14 +233,67 @@ class WorkItemController extends Controller
                 'id' => $item->id,
                 'title' => $item->title,
                 'priority' => $item->priority,
+                'progress' => (int) ($item->progress ?? 0),
+                'start_date' => $item->start_date?->format('Y-m-d'),
                 'due_date' => $item->due_date?->format('Y-m-d'),
+                'status_id' => $item->status_id,
+                'group_id' => $item->group_id,
+                'assignee_id' => $item->assignee_id,
+                // Ownership context so rows can be permission-filtered client-side.
+                'collaborator_ids' => $item->collaborators ? $item->collaborators->pluck('id')->values()->toArray() : [],
                 'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
                 'group' => $item->group ? ['id' => $item->group->id, 'name' => $item->group->name] : null,
                 'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
-                'project' => $item->project ? ['id' => $item->project->id, 'name' => $item->project->name] : null,
+                'project' => $item->project ? [
+                    'id' => $item->project->id,
+                    'name' => $item->project->name,
+                    'item_prefix' => $item->project->item_prefix,
+                    'end_date' => $item->project->end_date?->format('Y-m-d'),
+                    // Owner id so rows can be ownership-filtered client-side.
+                    'created_by' => $item->project->created_by,
+                ] : null,
                 'archived' => $item->archived_at !== null,
             ];
         });
+
+        // Per-project context so the work-item sheet can create/edit rows
+        // belonging to any project directly from the global list.
+        $contextProjectIds = $workItems
+            ->pluck('project.id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $contextProjects = projects::with('members.user')
+            ->whereIn('id', $contextProjectIds)
+            ->get();
+
+        $projectContexts = [];
+        foreach ($contextProjects as $contextProject) {
+            $projectContexts[$contextProject->id] = [
+                'project' => [
+                    'id' => $contextProject->id,
+                    'name' => $contextProject->name,
+                    'item_prefix' => $contextProject->item_prefix,
+                ],
+                'statuses' => work_item_statuses::where('project_id', $contextProject->id)
+                    ->orderBy('order')
+                    ->get(['id', 'name'])
+                    ->map(fn ($s) => ['id' => $s->id, 'name' => $s->name])
+                    ->values(),
+                'groups' => work_item_groups::where('project_id', $contextProject->id)
+                    ->get(['id', 'name'])
+                    ->map(fn ($g) => ['id' => $g->id, 'name' => $g->name])
+                    ->values(),
+                'members' => $contextProject->members
+                    ->map(fn ($member) => $member->user ? [
+                        'id' => $member->user->id,
+                        'name' => $member->user->name,
+                    ] : null)
+                    ->filter()
+                    ->values(),
+            ];
+        }
 
         $projects = projects::select('id', 'name')->orderBy('name')->get();
         $statuses = work_item_statuses::select('name')->distinct()->orderBy('name')->get();
@@ -201,10 +301,12 @@ class WorkItemController extends Controller
         return Inertia::render('work-items/global-index', [
             'workItems' => $workItems,
             'archived' => ($archived === '1' || $archived === 'true') ? true : false,
+            'pageTitle' => $isMember ? 'My Work Items' : 'All Work Items',
             'filters' => [
                 'projects' => $projects,
                 'statuses' => $statuses,
             ],
+            'projectContexts' => $projectContexts,
         ]);
     }
 
@@ -229,6 +331,7 @@ class WorkItemController extends Controller
                     'priority' => $item->priority,
                     'due_date' => $item->due_date->format('Y-m-d'),
                     'progress' => $item->progress ?? 0,
+                    'completed_at' => $item->completed_at?->format('Y-m-d'),
                     'status_id' => $item->status_id,
                     'group_id' => $item->group_id,
                     'assignee_id' => $item->assignee_id,
@@ -237,6 +340,7 @@ class WorkItemController extends Controller
                     'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
                     'group' => $item->group ? ['id' => $item->group->id, 'name' => $item->group->name] : null,
                     'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
+                    
                 ];
             });
 
@@ -257,7 +361,7 @@ class WorkItemController extends Controller
 
         return Inertia::render('work-items/index', [
             'workItems' => $workItems,
-            'project' => ['id' => $project->id, 'name' => $project->name, 'item_prefix' => $project->item_prefix],
+            'project' => ['id' => $project->id, 'name' => $project->name, 'item_prefix' => $project->item_prefix, 'created_by' => $project->created_by],
             'filters' => [
                 'statuses' => $statuses,
                 'groups' => $groups,
@@ -306,8 +410,8 @@ class WorkItemController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'status_id' => 'required|exists:work_item_statuses,id',
-            'group_id' => 'required|exists:work_item_groups,id',
-            'assignee_id' => 'required|exists:users,id',
+            'group_id' => 'nullable|integer|exists:work_item_groups,id',
+            'assignee_id' => 'nullable|integer|exists:users,id',
             'collaborators' => 'nullable|array',
             'collaborators.*' => 'integer',
             'priority' => 'required|in:low,medium,high,critical',
@@ -391,8 +495,8 @@ class WorkItemController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'status_id' => 'required|exists:work_item_statuses,id',
-            'group_id' => 'required|exists:work_item_groups,id',
-            'assignee_id' => 'required|exists:users,id',
+            'group_id' => 'nullable|integer|exists:work_item_groups,id',
+            'assignee_id' => 'nullable|integer|exists:users,id',
             'priority' => 'required|in:low,medium,high,critical',
             'progress' => 'nullable|integer|min:0|max:100',
             'start_date' => 'nullable|date',
@@ -424,6 +528,36 @@ class WorkItemController extends Controller
         
 
         
+    }
+
+    /**
+     * Update only the progress of a work item.
+     *
+     * Lightweight endpoint used by members: assignees and collaborators may
+     * update progress on their own items but can never touch other fields.
+     */
+    public function updateProgress(Request $request, projects $project, work_item $workItem)
+    {
+        if ($workItem->project_id !== $project->id) {
+            abort(404);
+        }
+
+        $this->authorize('work-item.updateProgress', $workItem);
+
+        $validated = $request->validate([
+            'progress' => 'required|integer|min:0|max:100',
+        ]);
+
+        // Only ever touch the progress column — nothing else.
+        $workItem->update(['progress' => $validated['progress']]);
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true, 'progress' => $workItem->progress]);
+        }
+
+        return redirect()
+            ->back()
+            ->with('success', 'Progress updated successfully.');
     }
 
     /**
@@ -474,6 +608,26 @@ class WorkItemController extends Controller
                 ->where('project_id', $project->id)
                 ->firstOrFail();
 
+            // Members may only bulk-update items assigned to them or shared with them.
+            $this->authorize('work-item.updateProgress', $workItem);
+
+            // Type-aware dependency gating: Superadmin/Admin may bypass.
+            if (! auth()->user()?->isWorkflowPrivileged()) {
+                $gates = $workItem->dependencyGates();
+
+                if ($validated['progress'] > 0 && (int) $workItem->progress === 0 && count($gates['start']) > 0) {
+                    return redirect()
+                        ->back()
+                        ->withErrors(['progress' => "\"{$workItem->title}\" can't start yet — blocked by: " . implode(', ', $gates['start'])]);
+                }
+
+                if ($validated['progress'] === 100 && count($gates['finish']) > 0) {
+                    return redirect()
+                        ->back()
+                        ->withErrors(['progress' => "\"{$workItem->title}\" can't be marked done yet — blocked by: " . implode(', ', $gates['finish'])]);
+                }
+            }
+
             $workItem->update(['progress' => $validated['progress']]);
 
             // Automatically update status based on progress value
@@ -497,9 +651,40 @@ class WorkItemController extends Controller
      */
     public function updateStatus(Request $request, work_item $workItem)
     {
+        // Status flips are allowed for admins/managers on anything, but for
+        // assignees/collaborators only on their own items — like progress,
+        // this is the limit of what non-privileged users may change.
+        $this->authorize('work-item.selfUpdate', $workItem);
+
         $validated = $request->validate([
             'status_id' => 'required|exists:work_item_statuses,id',
         ]);
+
+        // Type-aware dependency gating: Superadmin/Admin may bypass.
+        $user = auth()->user();
+        if (! $user?->isWorkflowPrivileged()) {
+            $gates = $workItem->dependencyGates();
+
+            if (count($gates) > 0) {
+                $target = work_item_statuses::find($validated['status_id']);
+                $targetName = strtolower($target?->name ?? '');
+                $currentProgress = (int) $workItem->progress;
+
+                // Starting: any move to a non-To Do status while at 0%.
+                if ($currentProgress === 0 && $targetName !== 'to do' && count($gates['start']) > 0) {
+                    return redirect()
+                        ->back()
+                        ->withErrors(['status_id' => "\"{$workItem->title}\" can't start yet — blocked by: " . implode(', ', $gates['start'])]);
+                }
+
+                // Finishing: moving to Done.
+                if ($targetName === 'done' && count($gates['finish']) > 0) {
+                    return redirect()
+                        ->back()
+                        ->withErrors(['status_id' => "\"{$workItem->title}\" can't be marked done yet — blocked by: " . implode(', ', $gates['finish'])]);
+                }
+            }
+        }
 
         $workItem->update(['status_id' => $validated['status_id']]);
 

@@ -19,33 +19,59 @@ class DashboardController extends Controller
     public function index()
     {
         $user = Auth::user()?->load('roles');
+        $isAdmin = $user && $user->isAdminLevel();
+        $isManager = $user && ! $isAdmin && $user->isManagerRole();
+        // Everyone without an admin/manager role gets the personal
+        // "My Tasks" view (member tier).
+        $isMember = $user && ! $isAdmin && ! $isManager;
+
+        // Query scoping by tier:
+        //  - admins see company-wide data (no scoping);
+        //  - managers see work items inside projects they own;
+        //  - members see only their own work items (assignee or collaborator).
+        $scopeWork = function ($query) use ($user, $isAdmin, $isManager, $isMember) {
+            if ($isAdmin) {
+                return $query;
+            }
+            if ($isManager) {
+                return $query->whereHas('project', fn ($p) => $p->where('created_by', $user->id));
+            }
+            if (! $isMember) {
+                return $query;
+            }
+            return $query->where(function ($q) use ($user) {
+                $q->where('assignee_id', $user->id)
+                  ->orWhereHas('collaborators', fn ($c) => $c->where('user_id', $user->id));
+            });
+        };
 
         // Total counts (active only; archived items are excluded from metrics)
         $totalUsers = User::count();
-        $totalProjects = projects::notArchived()->count();
-        $totalWorkItems = work_item::notArchived()->count();
-        $archivedWorkItems = work_item::archived()->count();
-        $overdueWorkItems = work_item::notArchived()
-            ->where('due_date', '<', now())
-            ->where('progress', '<', 100)
+        $totalProjects = projects::notArchived()
+            ->when($isManager, fn ($q) => $q->visibleTo($user))
+            ->when($isMember, fn ($q) => $q->whereHas('members', fn ($m) => $m->where('user_id', $user->id)))
             ->count();
+        $totalWorkItems = $scopeWork(work_item::notArchived())->count();
+        $archivedWorkItems = work_item::archived()->count();
+        $overdueWorkItems = $scopeWork(work_item::notArchived()
+            ->where('due_date', '<', now())
+            ->where('progress', '<', 100))->count();
 
         // Work items by priority (schema enum includes 'critical')
-        $highPriority = work_item::notArchived()->where('priority', 'high')->count();
-        $mediumPriority = work_item::notArchived()->where('priority', 'medium')->count();
-        $lowPriority = work_item::notArchived()->where('priority', 'low')->count();
-        $criticalPriority = work_item::notArchived()->where('priority', 'critical')->count();
+        $highPriority = $scopeWork(work_item::notArchived())->where('priority', 'high')->count();
+        $mediumPriority = $scopeWork(work_item::notArchived())->where('priority', 'medium')->count();
+        $lowPriority = $scopeWork(work_item::notArchived())->where('priority', 'low')->count();
+        $criticalPriority = $scopeWork(work_item::notArchived())->where('priority', 'critical')->count();
 
         // Derived work-item health metrics
-        $avgCompletion = (int) round(work_item::notArchived()->avg('progress') ?? 0);
-        $completedWorkItems = work_item::notArchived()->where('progress', 100)->count();
-        $unassignedWorkItems = work_item::notArchived()->whereNull('assignee_id')->count();
-        $dueThisWeek = work_item::notArchived()
+        $avgCompletion = (int) round($scopeWork(work_item::notArchived())->avg('progress') ?? 0);
+        $completedWorkItems = $scopeWork(work_item::notArchived())->where('progress', 100)->count();
+        $unassignedWorkItems = $scopeWork(work_item::notArchived())->whereNull('assignee_id')->count();
+        $dueThisWeek = $scopeWork(work_item::notArchived()
             ->whereNotNull('due_date')
             ->where('due_date', '>=', now()->startOfDay())
             ->where('due_date', '<=', now()->endOfDay()->addDays(7))
-            ->where('progress', '<', 100)
-            ->count();
+            ->where('progress', '<', 100))->count();
 
         // Users created within the last 7 days (replaces the hardcoded subtitle)
         $newUsersWeek = User::where('created_at', '>=', now()->subWeek())->count();
@@ -61,9 +87,9 @@ class DashboardController extends Controller
             ->count('succ.id');
 
         // Workload: number of assigned work items per user (top contributors)
-        $tasksPerUser = work_item::selectRaw('assignee_id, count(*) as total')
+        $tasksPerUser = $scopeWork(work_item::selectRaw('assignee_id, count(*) as total')
             ->notArchived()
-            ->whereNotNull('assignee_id')
+            ->whereNotNull('assignee_id'))
             ->groupBy('assignee_id')
             ->orderByDesc('total')
             ->with('assignee:id,fname,mname,lname,sname,username')
@@ -81,21 +107,31 @@ class DashboardController extends Controller
             ->take(5)
             ->values();
 
-        // Milestone health
-        $totalMilestones = milestones::count();
-        $completedMilestones = milestones::whereNotNull('completed_at')->count();
-        $overdueMilestones = milestones::whereNull('completed_at')
+        // Milestone health — managers only see milestones of projects they
+        // own or can otherwise see; admins and members keep prior behavior.
+        $scopeMilestones = function ($query) use ($user, $isAdmin, $isManager) {
+            if ($isAdmin || ! $isManager) {
+                return $query;
+            }
+
+            return $query->whereIn('project_id', projects::visibleTo($user)->select('id'));
+        };
+
+        $totalMilestones = $scopeMilestones(milestones::query())->count();
+        $completedMilestones = $scopeMilestones(milestones::whereNotNull('completed_at'))->count();
+        $overdueMilestones = $scopeMilestones(milestones::whereNull('completed_at')
             ->whereNotNull('target_date')
-            ->where('target_date', '<', now()->startOfDay())
+            ->where('target_date', '<', now()->startOfDay()))
             ->count();
-        $upcomingMilestones = milestones::whereNull('completed_at')
+        $upcomingMilestones = $scopeMilestones(milestones::whereNull('completed_at')
             ->whereNotNull('target_date')
-            ->where('target_date', '>=', now()->startOfDay())
+            ->where('target_date', '>=', now()->startOfDay()))
             ->count();
 
         // Work items by status (excludes archived items)
-        $statuses = work_item_statuses::withCount(['workItems' => function ($q) {
+        $statuses = work_item_statuses::withCount(['workItems' => function ($q) use ($scopeWork) {
             $q->notArchived();
+            $scopeWork($q);
         }])->get()->groupBy('name')->map(function ($group) {
             return [
                 'name' => $group->first()->name,
@@ -104,8 +140,8 @@ class DashboardController extends Controller
         })->values();
 
         // Recent work items (latest 5, active only)
-        $recentWorkItems = work_item::with(['project:id,name', 'status:id,name'])
-            ->notArchived()
+        $recentWorkItems = $scopeWork(work_item::with(['project:id,name', 'status:id,name'])
+            ->notArchived())
             ->latest()
             ->take(5)
             ->get()
@@ -122,6 +158,8 @@ class DashboardController extends Controller
 
         // Projects overview with member count and work item count (active only)
         $projectsOverview = projects::notArchived()
+            ->when($isManager, fn ($q) => $q->visibleTo($user))
+            ->when($isMember, fn ($q) => $q->whereHas('members', fn ($m) => $m->where('user_id', $user->id)))
             ->withCount(['members', 'workItems' => function ($q) {
                 $q->whereNull('archived_at');
             }])
@@ -143,8 +181,10 @@ class DashboardController extends Controller
                 ];
             });
 
-        // Team members distribution (users per project)
+        // Team members distribution (users per project) — managers only
+        // across the projects they can see.
         $teamDistribution = project_members::selectRaw('project_id, count(*) as total')
+            ->when($isManager, fn ($q) => $q->whereIn('project_id', projects::visibleTo($user)->select('id')))
             ->groupBy('project_id')
             ->with('project:id,name')
             ->get()
@@ -200,8 +240,9 @@ class DashboardController extends Controller
             ->values()
             ->toBase();
 
-        // Merge and sort activities by date
-        $recentActivities = $loginActivities
+        // Merge and sort activities by date. Audit activity is admin-only:
+        // managers are owner-scoped and must not see company-wide logs.
+        $recentActivities = ! $isAdmin ? collect() : $loginActivities
             ->merge($generalActivities)
             ->sortByDesc('created_at')
             ->take(20)
@@ -236,19 +277,19 @@ class DashboardController extends Controller
 
             $timeline[] = [
                 'week' => $start->format('M d'),
-                'created' => work_item::notArchived()
+                'created' => $scopeWork(work_item::notArchived()
                     ->where('created_at', '>=', $start)
-                    ->where('created_at', '<', $end)
-                    ->count(),
-                'completed' => work_item::notArchived()
+                    ->where('created_at', '<', $end))->count(),
+                'completed' => $scopeWork(work_item::notArchived()
                     ->whereNotNull('completed_at')
                     ->where('completed_at', '>=', $start)
-                    ->where('completed_at', '<', $end)
-                    ->count(),
+                    ->where('completed_at', '<', $end))->count(),
             ];
         }
 
         return Inertia::render('dashboard', [
+            'is_member' => $isMember,
+            'is_admin' => $isAdmin,
             'stats' => [
                 'total_users' => $totalUsers,
                 'total_projects' => $totalProjects,

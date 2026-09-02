@@ -277,3 +277,41 @@ input[type="date"]::-moz-calendar-picker-indicator {
 .dark select option:checked {
     background-color: hsl(0, 0%, 20%) !important;
 }
+
+/*
+ * Collapsible open/close animation (milestone & group tables, etc.).
+ *
+ * Radix sets data-state on the content element and exposes the measured
+ * height as --radix-collapsible-content-height. Animating height from that
+ * variable keeps the motion smooth for any content size, and Radix's
+ * presence logic holds the node mounted until the closing animation ends.
+ */
+@keyframes collapsible-down {
+    from {
+        height: 0;
+        opacity: 0;
+    }
+    to {
+        height: var(--radix-collapsible-content-height);
+        opacity: 1;
+    }
+}
+
+@keyframes collapsible-up {
+    from {
+        height: var(--radix-collapsible-content-height);
+        opacity: 1;
+    }
+    to {
+        height: 0;
+        opacity: 0;
+    }
+}
+
+.collapsible-content[data-state='open'] {
+    animation: collapsible-down 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.collapsible-content[data-state='closed'] {
+    animation: collapsible-up 180ms ease-in;
+}

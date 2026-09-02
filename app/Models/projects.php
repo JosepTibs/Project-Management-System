@@ -115,6 +115,32 @@ class projects extends Model
     }
 
     /**
+     * Determine whether this project is owned (created) by the given user.
+     */
+    public function isOwnedBy($user): bool
+    {
+        return $user !== null && (int) $this->created_by === (int) $user->id;
+    }
+
+    /**
+     * Scope query to projects the given manager may see: projects they own,
+     * are a member of, or have an assigned/collaborated work item in.
+     */
+    public function scopeVisibleTo($query, $user)
+    {
+        return $query->where(function ($q) use ($user) {
+            $q->where('created_by', $user->id)
+                ->orWhereHas('members', fn ($m) => $m->where('user_id', $user->id))
+                ->orWhereHas('workItems', function ($w) use ($user) {
+                    $w->where(function ($w2) use ($user) {
+                        $w2->where('assignee_id', $user->id)
+                            ->orWhereHas('collaborators', fn ($c) => $c->where('user_id', $user->id));
+                    });
+                });
+        });
+    }
+
+    /**
      * Determine whether this project may be archived.
      *
      * A project can be archived only when it has no open work items and no
@@ -167,7 +193,7 @@ class projects extends Model
     protected function completionPercentage(): Attribute
     {
         return Attribute::make(
-            get: fn () => round($this->workItems()->avg('progress') ?? 0, 2),
+            get: fn () => round($this->workItems()->avg('work_items.progress') ?? 0, 2),
             set: fn ($value) => $value,
         );
     }

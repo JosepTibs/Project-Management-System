@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState, useCallback, useEffect } from "react"
 import { router } from '@inertiajs/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Link2, Link2Off, ChevronRight, ChevronDown, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import AddDependencyDialog from '@/components/dependencies/add-dependency-dialog';
 
 
 interface WorkItem {
@@ -65,6 +66,8 @@ interface InteractiveGanttChartProps {
     workItems: WorkItem[];
     milestones: Milestone[];
     workItemGroups: WorkItemGroup[];
+    /** Disables all drag/move/resize/dependency interactions (view-only mode). */
+    readOnly?: boolean;
 }
 
 // NAME_WIDTH / INDENT_WIDTH stay fixed regardless of fullscreen.
@@ -359,6 +362,7 @@ export default function InteractiveGanttChart({
     workItems,
     milestones,
     workItemGroups,
+    readOnly = false,
 }: InteractiveGanttChartProps) {
     const [localWorkItems, setLocalWorkItems] = useState<WorkItem[]>(workItems);
     const [localMilestones, setLocalMilestones] = useState<Milestone[]>(milestones);
@@ -367,12 +371,15 @@ export default function InteractiveGanttChart({
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [depPreview, setDepPreview] = useState<DependencyPreview | null>(null);
     const [showDependencies, setShowDependencies] = useState(true);
+    const [addDepOpen, setAddDepOpen] = useState(false);
     const [collapsedMilestones, setCollapsedMilestones] = useState<Set<number>>(new Set());
     const [collapsedGroups, setCollapsedGroups] = useState<Set<number>>(new Set());
     const [collapsedTasks, setCollapsedTasks] = useState<Set<number>>(() => new Set(workItems.map((w) => w.id)));
     const containerRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const deleteDepHoverRef = useRef(false);
+    // Tracks whether the active mousedown->mouseup gesture moved beyond a click threshold
+    const dragMovedRef = useRef(false);
     
     const autoScrollRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const lastMousePosRef = useRef<{ x: number; y: number} | null>(null);  
@@ -384,10 +391,24 @@ export default function InteractiveGanttChart({
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const effectiveNameWidth = sidebarCollapsed ? COLLAPSED_NAME_WIDTH : NAME_WIDTH;
 
+    
+
     // Row height reserves headroom above task bars for the floating owner tag.
     // Fullscreen stays slightly shorter for density but still fits the tag.
     const ROW_HEIGHT = isFullscreen ? 52 : 56;
 
+    const toolbarRef = useRef<HTMLDivElement>(null);
+    const [toolbarHeight, setToolbarHeight] = useState(0);
+
+    useEffect(() => {
+        const el = toolbarRef.current;
+        if (!el) return;
+        const update = () => setToolbarHeight(el.offsetHeight);
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, []);
 
     
     const toggleMilestone = (id: number) => {
@@ -416,6 +437,17 @@ export default function InteractiveGanttChart({
             return next;
         });
     };
+
+    // Navigate to the work item detail page when a task is clicked.
+    // Guards against firing after an actual drag (move/resize) gesture.
+    const handleTaskClick = useCallback(
+        (item: TimelineItem) => {
+            if (item.type !== "task" || !item.taskId) return;
+            if (dragMovedRef.current || dragState?.mode) return;
+            router.visit(`/projects/${projectId}/work-items/${item.taskId}`);
+        },
+        [projectId, dragState]
+    );
 
     const removeDependency = useCallback(
         (dep: Dependency) => {
@@ -499,6 +531,19 @@ export default function InteractiveGanttChart({
             .catch(() => console.error('Failed to load dependencies'));
     }, [projectId]);
 
+    const refreshDependencies = useCallback(() => {
+        fetch(`/projects/${projectId}/dependencies`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success) {
+                    setDependencies(data.dependencies);
+                }
+            })
+            .catch(() => console.error('Failed to load dependencies'));
+    }, [projectId]);
+
     // Cleanup save timer on unmount
     useEffect(() => {
         return () => {
@@ -541,7 +586,7 @@ export default function InteractiveGanttChart({
                 start: milestoneTarget,
                 end: milestoneTarget,
                 type: "milestone",
-                progress: milestone.completed_at ? 100 : 0,
+                progress: typeof milestone.completion_percentage === "number" ? milestone.completion_percentage : milestone.completed_at ? 100 : 0,
                 level: 0,
                 description: milestone.description,
                 collapsed: collapsedMilestones.has(milestone.id),
@@ -635,6 +680,8 @@ export default function InteractiveGanttChart({
     // NOTE: this memo uses BASE_UNIT_WIDTH (a fixed constant) rather than the
     // dynamic UNIT_WIDTH, since UNIT_WIDTH below depends on totalUnits and would
     // otherwise create a circular "used before declaration" dependency.
+
+    
     
     const { earliest, totalUnits, periods, periodGroups, todayOffset } = useMemo(() => {
         if (!items.length) {
@@ -679,34 +726,40 @@ export default function InteractiveGanttChart({
             }
         }
 
-        const earliest = new Date(Math.min(...allStartDates));
-        const latest = new Date(Math.max(...allEndDates));
+       const earliest = new Date(Math.min(...allStartDates));
+    let latest = new Date(Math.max(...allEndDates));
 
-        const periods = buildPeriods(earliest, latest, viewMode);
-        const periodGroups = groupPeriods(periods);
-        const totalUnits = periods.length;
+    let periods = buildPeriods(earliest, latest, viewMode);
 
-        const today = new Date();
-        const todayOffset =
-            today >= stripTime(earliest) && today <= stripTime(latest)
-                ? columnIndexOf(today, earliest, viewMode)
-                : -1;
+    // Pad with extra trailing periods so the timeline fills the viewport
+    // instead of stretching each column's width to compensate.
+    const baseWidth = VIEW_UNIT_WIDTH[viewMode];
+    const available = containerWidth - effectiveNameWidth;
+    if (available > 0) {
+        const neededUnits = Math.ceil(available / baseWidth);
+        if (periods.length < neededUnits) {
+            const extendedLatest = addPeriods(
+                startOfPeriod(latest, viewMode),
+                neededUnits - 1,
+                viewMode
+            );
+            periods = buildPeriods(earliest, extendedLatest, viewMode);
+        }
+    }
 
-        return { earliest, totalUnits, periods, periodGroups, todayOffset };
-    }, [items, dragState, viewMode]);
+    const periodGroups = groupPeriods(periods);
+    const totalUnits = periods.length;
 
-    // Rendering UNIT_WIDTH: declared AFTER totalUnits exists.
-    // In fullscreen, fit the whole date range to the viewport width so more
-    // of the chart is visible; otherwise use a comfortable per-view width.
-    // const UNIT_WIDTH = useMemo(() => {
-    //     if (!isFullscreen) return VIEW_UNIT_WIDTH[viewMode];
-    //     if (!containerWidth || totalUnits === 0) return VIEW_UNIT_WIDTH[viewMode];
+    const today = new Date();
+    const todayOffset =
+        today >= stripTime(earliest) && today <= stripTime(latest)
+            ? columnIndexOf(today, earliest, viewMode)
+            : -1;
 
-    //     const available = containerWidth - effectiveNameWidth;
-    //     const fitWidth = Math.floor(available / totalUnits);
-    //     // clamp so periods don't get unreadably thin or absurdly fat
-    //     return Math.min(Math.max(fitWidth, 60), 240);
-    // }, [isFullscreen, containerWidth, totalUnits, viewMode, effectiveNameWidth]);
+    return { earliest, totalUnits, periods, periodGroups, todayOffset };
+}, [items, dragState, viewMode, containerWidth, effectiveNameWidth]);
+
+    
 
         const EDGE_TRESHOLD = 60;
         const MAX_SCORLL_SPEED = 18;
@@ -770,6 +823,7 @@ export default function InteractiveGanttChart({
     // Pixel-per-day for the current view. Used so drag offsets convert to
     // individual days regardless of the selected period granularity.
     const PIXELS_PER_DAY = UNIT_WIDTH / VIEW_DAYS_PER_PERIOD[viewMode];
+    const MIN_BAR_WIDTH = Math.min(60, Math.max(10, PIXELS_PER_DAY * 3));
 
     // Get the displayed position/duration for an item considering drag state
     const getItemLayout = useCallback(
@@ -808,9 +862,11 @@ export default function InteractiveGanttChart({
     // Handle drag start on bars (tasks, groups, milestones)
     const handleDragStart = useCallback(
         (e: React.MouseEvent, item: TimelineItem, mode: DragMode) => {
+            if (readOnly) return;
             if (item.type !== "task" && item.type !== "group" && item.type !== "milestone") return;
             e.preventDefault();
             e.stopPropagation();
+            dragMovedRef.current = false;
 
             setDragState({
                 mode,
@@ -827,7 +883,7 @@ export default function InteractiveGanttChart({
     // Handle dependency drag start from task right edge handle
     const handleDepDragStart = useCallback(
         (e: React.MouseEvent, item: TimelineItem) => {
-            if (item.type !== "task") return;
+            if (readOnly || item.type !== "task") return;
             e.preventDefault();
             e.stopPropagation();
 
@@ -843,58 +899,6 @@ export default function InteractiveGanttChart({
         []
     );
 
-    //     // Handle mouse move for drag operations
-    // const handleGlobalMouseMove = useCallback(
-    //     (e: MouseEvent) => {
-    //         // Handle dependency preview
-    //         if (depPreview) {
-    //             setDepPreview((prev) => (prev ? { ...prev, x: e.clientX, y: e.clientY } : prev));
-    //             return;
-    //         }
-
-    //         // Handle move/resize drag
-    //         if (dragState?.mode && (dragState.mode === "move" || dragState.mode === "resize-start" || dragState.mode === "resize-end")) {
-    //             const offset = e.clientX - dragState.startX;
-    //             let clampedOffset = offset;
-
-    //             // Live clamping: enforce task boundary constraints during drag
-    //             const item = items.find((i) => i.id === dragState.itemId);
-    //             if (item && item.type === "task" && item.taskId) {
-    //                 const taskGroup = findGroupForTask(item.taskId);
-    //                 if (taskGroup && taskGroup.start_date && taskGroup.end_date) {
-    //                     const offsetDays = Math.round(offset / PIXELS_PER_DAY);
-    //                     const groupStart = new Date(taskGroup.start_date);
-    //                     const groupEnd = new Date(taskGroup.end_date);
-
-    //                     if (dragState.mode === "move") {
-    //                         const newStart = addDays(item.start, offsetDays);
-    //                         const newEnd = addDays(item.end, offsetDays);
-
-    //                         if (newStart < groupStart) {
-    //                             clampedOffset = differenceInDays(groupStart, item.start) * PIXELS_PER_DAY;
-    //                         }
-    //                         if (newEnd > groupEnd) {
-    //                             clampedOffset = Math.min(clampedOffset, differenceInDays(groupEnd, item.end) * PIXELS_PER_DAY);
-    //                         }
-    //                     } else if (dragState.mode === "resize-end") {
-    //                         const newEnd = addDays(item.end, offsetDays);
-    //                         if (newEnd > groupEnd) {
-    //                             clampedOffset = differenceInDays(groupEnd, item.end) * PIXELS_PER_DAY;
-    //                         }
-    //                     } else if (dragState.mode === "resize-start") {
-    //                         const newStart = addDays(item.start, offsetDays);
-    //                         if (newStart < groupStart) {
-    //                             clampedOffset = differenceInDays(groupStart, item.start) * PIXELS_PER_DAY;
-    //                         }
-    //                     }
-    //                 }
-    //             }
-
-    //             setDragState((prev) => (prev ? { ...prev, currentOffset: clampedOffset } : prev));
-    //         }
-    //     },
-    //     [dragState, depPreview, items, PIXELS_PER_DAY, findGroupForTask]
-    // );
 
          // Handle mouse move for drag operations
     const handleGlobalMouseMove = useCallback(
@@ -962,6 +966,8 @@ export default function InteractiveGanttChart({
                         }
                     }
                 }
+
+                if (Math.abs(offset) > 4) dragMovedRef.current = true;
 
                 setDragState((prev) => (prev ? { ...prev, currentOffset: clampedOffset } : prev));
             }
@@ -1348,7 +1354,7 @@ export default function InteractiveGanttChart({
             
             <TooltipProvider delayDuration={300}>
                 
-                <div className="sticky top-0 left-0 z-50 flex flex-wrap items-center gap-2 border-b border-input bg-background px-2 py-1.5 text-sm w-full min-w-max">
+                <div ref={toolbarRef} className="sticky top-0 left-0 z-50 flex flex-wrap items-center gap-2 border-b border-input bg-background px-2 py-1.5 text-sm w-full min-w-max">
                     <button
                         onClick={() => setSidebarCollapsed((prev) => !prev)}
                         title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -1381,6 +1387,20 @@ export default function InteractiveGanttChart({
                     >
                         {showDependencies ? <Link2 className="h-3.5 w-3.5 text-blue-600" /> : <Link2Off className="h-3.5 w-3.5" />}
                     </button>
+                    {!readOnly && (
+                    <button
+                        onClick={() => setAddDepOpen(true)}
+                        title="Add dependency"
+                        className="inline-flex items-center h-7 px-2 rounded border border-input bg-background hover:bg-accent text-muted-foreground text-[11px] font-semibold"
+                    >
+                        + Link
+                    </button>
+                    )}
+                    {readOnly && (
+                        <span className="inline-flex items-center h-7 px-2 rounded bg-muted text-muted-foreground text-[11px] font-medium" title="View only — ask a manager to change the schedule">
+                            View only
+                        </span>
+                    )}
                     <button
                         onClick={() => setIsFullscreen((prev) => !prev)}
                         title={isFullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
@@ -1399,7 +1419,7 @@ export default function InteractiveGanttChart({
                     }}
                 >
                     {/* ── Header: Task label ── */}
-                    <div className="sticky left-0 z-50 border-b bg-background p-3 font-semibold text-sm flex items-center">
+                    <div className="sticky left-0 z-50 border-b bg-background p-3 font-semibold text-sm flex items-center" style={{ top: toolbarHeight }}>
                         Task
                     </div>
 
@@ -1445,7 +1465,7 @@ export default function InteractiveGanttChart({
                             <React.Fragment key={item.id}>
                                 {/* Sidebar cell */}
                                 <div
-                                    className={`sticky left-0 z-50 flex items-center border-b px-3 transition-colors bg-background`}
+                                    className={`sticky left-0 z-20 flex items-center border-b px-3 transition-colors bg-background`}
                                     style={{ height: ROW_HEIGHT, paddingLeft: sidebarCollapsed ? 0 : 12 + item.level * 20 }}
                                 >
                                     <div className={`min-w-0 ${sidebarCollapsed ? "w-full flex items-center justify-center" : "flex-1"}`}>
@@ -1455,7 +1475,10 @@ export default function InteractiveGanttChart({
                                                 
                                                 <div className="min-w-0 flex-1">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="min-w-0 flex-1 text-sm font-medium truncate">
+                                                        <span
+                                                            onClick={() => handleTaskClick(item)}
+                                                            className={`min-w-0 flex-1 text-sm font-medium truncate ${item.type === "task" && item.taskId ? "cursor-pointer hover:underline" : ""}`}
+                                                        >
                                                             {item.name}
                                                             {(item.type === "milestone" || item.type === "group" ) && (
                                             <button
@@ -1542,9 +1565,10 @@ export default function InteractiveGanttChart({
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <div
-                                                    className="absolute"
+                                                    className={`absolute ${item.type === "task" ? "cursor-pointer" : ""}`}
                                                     style={{ left: layout.barLeft, top: layout.barTop, width: layout.barWidth }}
                                                     onMouseDown={(e) => handleDragStart(e, item, "move")}
+                                                    onClick={() => handleTaskClick(item)}
                                                 >
                                                     {item.type === "task" ? (
                                                         <>
@@ -1579,6 +1603,7 @@ export default function InteractiveGanttChart({
 
                                                                 {/* Resize handles */}
                                                                 <div
+                                                                    style={readOnly ? { display: "none" } : undefined}
                                                                     className="absolute left-1.5 top-0 bottom-0 w-3.5 cursor-ew-resize hover:bg-white/40 rounded-l-md z-30"
                                                                     onMouseDown={(e) => handleDragStart(e, item, "resize-start")}
                                                                 />
@@ -1589,6 +1614,7 @@ export default function InteractiveGanttChart({
 
                                                                 {/* Dependency connection handle */}
                                                                 <div
+                                                                    style={readOnly ? { display: "none" } : undefined}
                                                                     className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-5 w-5 rounded-full border border-indigo-300 bg-white/90 text-indigo-600 cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                                                                     onMouseDown={(e) => handleDepDragStart(e, item)}
                                                                     title="Drag to create dependency"
@@ -1666,7 +1692,7 @@ export default function InteractiveGanttChart({
                                 left: effectiveNameWidth,
                                 width: totalUnits * UNIT_WIDTH,
                                 height: items.length * ROW_HEIGHT,
-                                top: 42,
+                                top: viewMode === "day" ? 58 : 42,
                             }}
                         >
                             <svg
@@ -1779,6 +1805,14 @@ export default function InteractiveGanttChart({
                     </svg>
                 </div>
             )}
+<AddDependencyDialog
+                open={addDepOpen}
+                onOpenChange={setAddDepOpen}
+                projectId={projectId}
+                workItems={localWorkItems.map((w) => ({ id: w.id, title: w.title }))}
+                onCreated={refreshDependencies}
+            />
+
         </div>
     );
 }

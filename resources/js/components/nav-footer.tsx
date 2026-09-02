@@ -1,6 +1,7 @@
 import { Icon } from '@/components/icon';
 import { SidebarGroup, SidebarGroupContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
+import { Link, router } from '@inertiajs/react';
 
 export function NavFooter({
     items,
@@ -15,15 +16,32 @@ export function NavFooter({
                 <SidebarMenu>
                     {items.map((item) => (
                         <SidebarMenuItem key={item.title}>
-                            <SidebarMenuButton
-                                asChild
-                                className="text-neutral-600 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-neutral-100"
-                            >
-                                <a href={item.url} target="_blank" rel="noopener noreferrer">
+                            {item.method === 'post' ? (
+                                // State-changing actions (e.g. logout) must be
+                                // POSTed, never a plain GET link.
+                                <SidebarMenuButton
+                                    tooltip={item.title}
+                                    className="text-neutral-600 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-neutral-100"
+                                    onClick={() => router.post(item.url)}
+                                >
                                     {item.icon && <Icon iconNode={item.icon} className="h-5 w-5" />}
                                     <span>{item.title}</span>
-                                </a>
-                            </SidebarMenuButton>
+                                </SidebarMenuButton>
+                            ) : (
+                                <SidebarMenuButton asChild tooltip={item.title}>
+                                    {/^https?:\/\//.test(item.url) ? (
+                                        <a href={item.url} target="_blank" rel="noopener noreferrer">
+                                            {item.icon && <Icon iconNode={item.icon} className="h-5 w-5" />}
+                                            <span>{item.title}</span>
+                                        </a>
+                                    ) : (
+                                        <Link href={item.url} prefetch>
+                                            {item.icon && <Icon iconNode={item.icon} className="h-5 w-5" />}
+                                            <span>{item.title}</span>
+                                        </Link>
+                                    )}
+                                </SidebarMenuButton>
+                            )}
                         </SidebarMenuItem>
                     ))}
                 </SidebarMenu>

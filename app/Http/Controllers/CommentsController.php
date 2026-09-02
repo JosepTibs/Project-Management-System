@@ -142,7 +142,8 @@ class CommentsController extends Controller
      */
     public function store(Request $request, work_item $workItem)
     {
-        //
+        // Any project member may comment; outsiders are rejected.
+        $this->authorize('comment.create', $workItem);
 
         $validated = $request->validate([
             'content' => 'required|string|max:10000',

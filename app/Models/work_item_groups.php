@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
@@ -26,6 +27,7 @@ class work_item_groups extends Model
         'description',
         'start_date',
         'end_date',
+        'progress',
     ];
 
     /**
@@ -36,6 +38,7 @@ class work_item_groups extends Model
         return [
             'start_date' => 'date',
             'end_date' => 'date',
+            'progress' => 'integer',
         ];
     }
 
@@ -53,5 +56,17 @@ class work_item_groups extends Model
     public function workItems(): HasMany
     {
         return $this->hasMany(work_item::class, 'group_id');
+    }
+
+    /**
+     * Get the users assigned to work on this group.
+     *
+     * A group can have multiple assignees. This is meaningful both when the
+     * group contains individual work items (each keeping its own assignee) and
+     * when the group is empty (assignees work on the group as a whole).
+     */
+    public function assignees(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'work_item_group_assignees', 'group_id', 'user_id')->withTimestamps();
     }
 }

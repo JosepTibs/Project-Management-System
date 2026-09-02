@@ -2,21 +2,12 @@ import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import { type NavItem } from '@/types';
+import { type NavItem, type SharedData } from '@/types';
+import { isAdminLevel } from '@/lib/roles';
 import { Link, usePage } from '@inertiajs/react';
-import { BookOpen, Folder, LayoutGrid, Users, Workflow, FileText, User, ActivityIcon, ActivitySquare } from 'lucide-react';
+import { FolderKanban, LayoutGrid, LogOut, Users, FileText, ActivityIcon } from 'lucide-react';
 import AppLogo from './app-logo';
 
-type pageProps = {
-    auth: {
-        user: {
-            id: number;
-            name: string;
-            email: string;
-        };
-        roles: string [];
-    };
-};
 const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
@@ -24,28 +15,9 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Profile',
-        url: '/profile',
-        icon: User,
-    },
-    {
-        title: 'Users',
-        url: '/users',
-        icon: Users,
-        roles: ['admin'],
-    },
-    {
         title: 'Projects',
         url: '/projects',
-        icon: ActivitySquare,
-        roles: ['admin']
-    },
-    {
-        title: ' My Projects',
-        url: '/projects',
-        icon: Workflow,
-        roles: ['member', 'project manager' ]
-
+        icon: FolderKanban,
     },
     {
         title: 'Work Items',
@@ -53,35 +25,40 @@ const mainNavItems: NavItem[] = [
         icon: FileText,
     },
     {
+        title: 'Users',
+        url: '/users',
+        icon: Users,
+        roles: ['superadmin', 'admin'],
+    },
+    {
         title: 'Activity Log',
         url: '/activity-logs',
         icon: ActivityIcon,
-        roles: ['admin']
-    }
+        roles: ['superadmin', 'admin'],
+    },
 ];
 
 const footerNavItems: NavItem[] = [
     {
-        title: 'Logout',
+        title: 'Log Out',
         url: '/logout',
-        icon: Folder,
-    },
-    {
-        title: 'Documentation',
-        url: 'https://laravel.com/docs/starter-kits',
-        icon: BookOpen,
+        method: 'post',
+        icon: LogOut,
     },
 ];
 
 export function AppSidebar() {
-
-    const { auth } = usePage<pageProps>().props;
+    const { auth } = usePage<SharedData>().props;
 
     const visibleNavItems = mainNavItems.filter((item) => {
-        if(!item.roles){
+        if (!item.roles) {
             return true;
         }
-        return item.roles.some((role) => auth.roles.includes(role));
+        // Admin-gated items: also let superadmins through via Gate::before.
+        if (item.roles.includes('admin' )) {
+            return isAdminLevel(auth?.roles);
+        }
+        return item.roles.some((role) => auth?.roles?.includes(role));
     });
     return (
         <Sidebar collapsible="icon" variant="inset">

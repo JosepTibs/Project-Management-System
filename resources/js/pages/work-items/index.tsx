@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Plus, Search, Pencil, Trash2, ArrowLeft, CheckSquare, Square } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, ArrowLeft} from 'lucide-react';
 import WorkItemSheet, { type EditWorkItemData } from '@/components/work-items/work-item-sheet';
+import { getDueStatus } from '@/lib/project-due';
 import { useState, useMemo } from 'react';
 
 interface Status {
@@ -33,6 +34,7 @@ interface WorkItemData {
     priority: string;
     due_date: string;
     progress: number;
+    completed_at?: string | null;
     status_id: number;
     group_id: number;
     assignee_id: number;
@@ -45,11 +47,15 @@ interface WorkItemData {
 
 interface WorkItemsPageProps extends Record<string, unknown> {
     workItems: WorkItemData[];
-    project: { id: number; name: string; item_prefix: string };
+    project: { id: number; name: string; item_prefix: string; created_by?: number };
     filters: {
         statuses: Status[];
         groups: Group[];
         members: Member[];
+    };
+    auth?: {
+        roles?: string[];
+        user?: { id: number };
     };
 }
 
@@ -64,8 +70,66 @@ function getPriorityVariant(priority: string) {
     }
 }
 
+function ProgressCell({ projectId, item, canEdit }: {
+    projectId: number;
+    item: WorkItemData;
+    canEdit: boolean;
+}) {
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(String(item.progress));
+    const clamped = Math.min(100, Math.max(0, item.progress ?? 0));
+
+    const commit = () => {
+        const next = Math.max(0, Math.min(100, Math.round(Number(draft) || 0)));
+        if (next !== item.progress) {
+            router.patch(`/projects/${projectId}/work-items/${item.id}/progress`,
+                { progress: next },
+                { preserveScroll: true,
+                  onSuccess: () => setEditing(false),
+                  onError: () => setDraft(String(item.progress)) });
+        } else { setDraft(String(item.progress)); setEditing(false); }
+    };
+
+    const bar = (
+        <>
+            <div className="w-16 bg-secondary rounded-full h-1.5 overflow-hidden">
+                <div className="bg-primary rounded-full h-1.5" style={{ width: `${clamped}%` }} />
+            </div>
+            <span className="text-xs text-muted-foreground w-8 tabular-nums">{clamped}%</span>
+        </>
+    );
+
+    if (!canEdit) return <div className="flex items-center gap-2">{bar}</div>;
+
+    if (!editing) {
+        return (
+            <button type="button"
+                onClick={() => { setDraft(String(item.progress)); setEditing(true); }}
+                title="Click to update progress"
+                className="flex items-center gap-2 group">
+                {bar}
+            </button>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-1">
+            <Input autoFocus type="number" min={0} max={100} value={draft}
+                aria-label={`Progress for ${item.title}`}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); }
+                    if (e.key === 'Escape') { setDraft(String(item.progress)); setEditing(false); }
+                }}
+                onBlur={commit}
+                className="w-16 h-8 text-right text-xs" />
+            <span className="text-xs text-muted-foreground">%</span>
+        </div>
+    );
+}
+
 export default function WorkItemsIndex() {
-    const { workItems, project, filters } = usePage<WorkItemsPageProps>().props;
+    const { workItems, project, filters, auth } = usePage<WorkItemsPageProps>().props;
     const [sheetOpen, setSheetOpen] = useState(false);
     const [sheetMode, setSheetMode] = useState<'create' | 'edit'>('create');
     const [editingWorkItem, setEditingWorkItem] = useState<WorkItemData | null>(null);
@@ -73,8 +137,23 @@ export default function WorkItemsIndex() {
     const [statusFilter, setStatusFilter] = useState('');
     const [groupFilter, setGroupFilter] = useState('');
     const [priorityFilter, setPriorityFilter] = useState('');
-    const [selectedIds, setSelectedIds] = useState<number[]>([]);
-    const [bulkProgress, setBulkProgress] = useState('');
+;
+    // Role tiers: admins manage everything; managers only projects they own;
+    // members/unroled users may only progress their own items.
+    const userRoles: string[] = (auth?.roles ?? []) as string[];
+    const isAdmin = userRoles.some((r) => ['admin', 'superadmin'].includes(r.toLowerCase()));
+    const isManager = !isAdmin && userRoles.some((r) => r.toLowerCase().includes('manager'));
+    const ownsProject = Number((project as { created_by?: number })?.created_by) === Number(auth?.user?.id);
+    const canManageProject = isAdmin || (isManager && ownsProject);
+    const canEditProgress = (item: WorkItemData) =>
+        canManageProject ||
+        Number(item.assignee_id) === Number(auth?.user?.id) ||
+        (item.collaborators ?? []).includes(Number(auth?.user?.id));
+    // Deletion matches the backend work-item.delete gate: managers anywhere,
+    // members only on their own assigned rows.
+    const canDelete = (item: WorkItemData) =>
+        canManageProject || Number(item.assignee_id) === Number(auth?.user?.id);
+    const [progressDrafts, setProgressDrafts] = useState<Record<number, string>>({});
 
     const filteredItems = useMemo(() => {
         return workItems.filter((item) => {
@@ -90,43 +169,42 @@ export default function WorkItemsIndex() {
         });
     }, [workItems, search, statusFilter, groupFilter, priorityFilter]);
 
+    function commitProgress(item: WorkItemData, value: string) {
+        const parsed = Number(value);
+        if (value.trim() === '' || Number.isNaN(parsed) || parsed < 0 || parsed > 100 || parsed === item.progress) {
+            // Invalid or unchanged — just discard the draft.
+            setProgressDrafts((prev) => {
+                const next = { ...prev };
+                delete next[item.id];
+                return next;
+            });
+            return;
+        }
+
+        router.patch(
+            `/projects/${project.id}/work-items/bulk-progress`,
+            { work_item_ids: [item.id], progress: parsed },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setProgressDrafts((prev) => {
+                        const next = { ...prev };
+                        delete next[item.id];
+                        return next;
+                    });
+                },
+            }
+        );
+    }
+
     function handleDelete(itemId: number, title: string) {
         if (confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
             router.delete(`/projects/${project.id}/work-items/${itemId}`, { preserveScroll: true });
         }
     }
 
-    function toggleSelect(id: number) {
-        setSelectedIds((prev) =>
-            prev.includes(id) ? prev.filter((itemId) => itemId !== id) : [...prev, id]
-        );
-    }
 
-    function toggleSelectAll() {
-        if (selectedIds.length === filteredItems.length) {
-            setSelectedIds([]);
-        } else {
-            setSelectedIds(filteredItems.map((item) => item.id));
-        }
-    }
 
-    function handleBulkProgress() {
-        if (!bulkProgress || selectedIds.length === 0) return;
-
-        router.patch(
-            `/projects/${project.id}/work-items/bulk-progress`,
-            {
-                work_item_ids: selectedIds,
-                progress: Number(bulkProgress),
-            },
-            {
-                onSuccess: () => {
-                    setSelectedIds([]);
-                    setBulkProgress('');
-                },
-            }
-        );
-    }
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Projects', href: '/projects' },
@@ -154,32 +232,7 @@ export default function WorkItemsIndex() {
                     </div>
                 </div>
 
-                {/* Bulk Actions */}
-                {selectedIds.length > 0 && (
-                    <Card>
-                        <CardContent className="pt-4">
-                            <div className="flex items-center gap-3">
-                                <span className="text-sm text-muted-foreground">
-                                    {selectedIds.length} item{selectedIds.length > 1 ? 's' : ''} selected
-                                </span>
-                                <div className="flex items-center gap-2 ml-auto">
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        placeholder="Progress %"
-                                        value={bulkProgress}
-                                        onChange={(e) => setBulkProgress(e.target.value)}
-                                        className="w-32"
-                                    />
-                                    <Button onClick={handleBulkProgress} disabled={!bulkProgress}>
-                                        Update Progress
-                                    </Button>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
+             
 
                 {/* Filters */}
                 <Card>
@@ -249,15 +302,6 @@ export default function WorkItemsIndex() {
                                 <Table>
                                     <TableHeader>
                                     <TableRow>
-                                        <TableHead className="w-12">
-                                            <button onClick={toggleSelectAll} className="flex items-center justify-center">
-                                                {selectedIds.length === filteredItems.length && filteredItems.length > 0 ? (
-                                                    <CheckSquare className="h-4 w-4" />
-                                                ) : (
-                                                    <Square className="h-4 w-4" />
-                                                )}
-                                            </button>
-                                        </TableHead>
                                         <TableHead>Title</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead>Group</TableHead>
@@ -271,18 +315,7 @@ export default function WorkItemsIndex() {
                                     <TableBody>
                                         {filteredItems.map((item: WorkItemData) => (
                                             <TableRow key={item.id}>
-                                                <TableCell>
-                                                    <button
-                                                        onClick={() => toggleSelect(item.id)}
-                                                        className="flex items-center justify-center"
-                                                    >
-                                                        {selectedIds.includes(item.id) ? (
-                                                            <CheckSquare className="h-4 w-4 text-primary" />
-                                                        ) : (
-                                                            <Square className="h-4 w-4" />
-                                                        )}
-                                                    </button>
-                                                </TableCell>
+                                                
                                                 <TableCell className="font-medium max-w-xs truncate">
                                                    <Link href={`/projects/${project.id}/work-items/${item.id}`}>
                                                    {item.title}
@@ -300,34 +333,40 @@ export default function WorkItemsIndex() {
                                                     </Badge>
                                                 </TableCell>
                                                 <TableCell>
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-16 bg-secondary rounded-full h-1.5">
-                                                            <div
-                                                                className="bg-primary rounded-full h-1.5"
-                                                                style={{ width: `${item.progress}%` }}
-                                                            />
-                                                        </div>
-                                                        <span className="text-xs text-muted-foreground w-8">
-                                                            {item.progress}%
-                                                        </span>
-                                                    </div>
+                                                    <ProgressCell projectId={project.id} item={item} canEdit={canEditProgress(item)} />
                                                 </TableCell>
-                                                <TableCell className="text-muted-foreground">
-                                                    {item.due_date}
+
+                                                <TableCell className="text-right">
+                                                    {(() => {
+                                                        const { label, className } = getDueStatus(item.due_date, item.progress, item.completed_at);
+                                                        return (
+                                                            <span
+                                                                title={item.due_date ? `Due ${label}` : 'No due date'}
+                                                                className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                                    item.due_date ? className : 'text-muted-foreground'
+                                                                }`}
+                                                            >
+                                                                {label}
+                                                            </span>
+                                                        );
+                                                    })()}
                                                 </TableCell>
                                                 <TableCell className="text-muted-foreground">
                                                     {item.assignee?.name || '—'}
                                                 </TableCell>
                                                 <TableCell>
                                                     <div className="flex justify-end gap-2">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            title="Edit"
-                                                            onClick={() => { setEditingWorkItem(item); setSheetMode('edit'); setSheetOpen(true); }}
-                                                        >
-                                                            <Pencil className="h-4 w-4" />
-                                                        </Button>
+                                                        {canManageProject && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                title="Edit"
+                                                                onClick={() => { setEditingWorkItem(item); setSheetMode('edit'); setSheetOpen(true); }}
+                                                            >
+                                                                <Pencil className="h-4 w-4" />
+                                                            </Button>
+                                                        )}
+                                                        {canDelete(item) && (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -337,6 +376,7 @@ export default function WorkItemsIndex() {
                                                         >
                                                             <Trash2 className="h-4 w-4" />
                                                         </Button>
+                                                        )}
                                                     </div>
                                                 </TableCell>
                                             </TableRow>

@@ -51,8 +51,8 @@ export default function EditWorkItem() {
     const [title, setTitle] = useState(workItem.title);
     const [description, setDescription] = useState(workItem.description);
     const [statusId, setStatusId] = useState(String(workItem.status_id));
-    const [groupId, setGroupId] = useState(String(workItem.group_id));
-    const [assigneeId, setAssigneeId] = useState(String(workItem.assignee_id));
+    const [groupId, setGroupId] = useState(workItem.group_id ? String(workItem.group_id) : 'none');
+    const [assigneeId, setAssigneeId] = useState(workItem.assignee_id ? String(workItem.assignee_id) : 'none');
     const [priority, setPriority] = useState(workItem.priority);
     const [startDate, setStartDate] = useState(workItem.start_date ?? '');
     const [progress, setProgress] = useState(String(workItem.progress));
@@ -75,8 +75,8 @@ export default function EditWorkItem() {
             title,
             description,
             status_id: statusId,
-            group_id: groupId,
-            assignee_id: assigneeId,
+            group_id: groupId === 'none' || groupId === '' ? null : Number(groupId),
+            assignee_id: assigneeId === 'none' || assigneeId === '' ? null : Number(assigneeId),
             priority,
             progress: Number(progress),
             start_date: startDate || null,
@@ -163,6 +163,7 @@ export default function EditWorkItem() {
                                             <SelectValue placeholder="Select group" />
                                         </SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value="none">No group (ungrouped)</SelectItem>
                                             {groups.map((g) => (
                                                 <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
                                             ))}
@@ -196,6 +197,7 @@ export default function EditWorkItem() {
                                             <SelectValue placeholder="Select member" />
                                         </SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value="none">Unassigned</SelectItem>
                                             {members.map((m) => (
                                                 <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
                                             ))}

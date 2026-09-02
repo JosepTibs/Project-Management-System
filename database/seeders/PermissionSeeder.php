@@ -18,6 +18,7 @@ class PermissionSeeder extends Seeder
             ['name' => 'create work items', 'guard_name' => 'web'],
             ['name' => 'edit work items', 'guard_name' => 'web'],
             ['name' => 'delete work items', 'guard_name' => 'web'],
+            ['name' => 'delete users', 'guard_name' => 'web'],
             ['name' => 'manage members', 'guard_name' => 'web'],
         ];
 

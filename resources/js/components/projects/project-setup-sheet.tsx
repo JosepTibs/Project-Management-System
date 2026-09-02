@@ -2,40 +2,14 @@ import { router } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Sheet,
-    SheetContent,
-    SheetDescription,
-    SheetFooter,
-    SheetHeader,
-    SheetTitle,
-} from '@/components/ui/sheet';
-import {
-    AlertTriangle,
-    ArrowLeft,
-    ArrowRight,
-    Check,
-    ChevronDown,
-    FileText,
-    FolderKanban,
-    Plus,
-    Target,
-    Trash2,
-} from 'lucide-react';
-import {
-    AlertDialog,
-    AlertDialogContent,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogCancel,
-    AlertDialogAction,
-} from '@/components/ui/alert-dialog';
-import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle,} from '@/components/ui/sheet';
+import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, FileText, FolderKanban, Plus, Target, Trash2,} from 'lucide-react';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,} from '@/components/ui/alert-dialog';
+import { useEffect, useRef, useState, ChangeEvent, type Dispatch, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 
 export interface UserOption {
@@ -72,6 +46,8 @@ export interface NestedGroup {
     description: string;
     start_date: string;
     end_date: string;
+    progress: number;
+    assignee_ids: number[];
     work_items: NestedWorkItem[];
 }
 
@@ -100,8 +76,9 @@ interface ProjectSetupSheetProps {
     statuses: StatusOption[];
     allUsers: UserOption[];
     workItemStatuses: WorkItemStatusOption[];
-    initialMemberIds?: number[];
+            initialMemberIds?: number[];
     initialMilestones?: NestedMilestone[];
+    initialUnlinkedWorkItems?: NestedWorkItem[];
     onSuccess?: () => void;
 }
 
@@ -127,6 +104,8 @@ function formatDate(value: string) {
     });
 }
 
+
+
 function dateRange(start: string, end: string) {
     if (!start && !end) return 'Dates not set';
     if (!start) return `Until ${formatDate(end)}`;
@@ -148,8 +127,9 @@ export default function ProjectSetupSheet({
     statuses,
     allUsers,
     workItemStatuses,
-    initialMemberIds = [],
+        initialMemberIds = [],
     initialMilestones = [],
+    initialUnlinkedWorkItems = [],
     onSuccess,
 }: ProjectSetupSheetProps) {
     const [step, setStep] = useState<Step>(1);
@@ -164,7 +144,8 @@ export default function ProjectSetupSheet({
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
 
-    const [milestones, setMilestones] = useState<NestedMilestone[]>(initialMilestones);
+        const [milestones, setMilestones] = useState<NestedMilestone[]>(initialMilestones);
+    const [unlinkedWorkItems, setUnlinkedWorkItems] = useState<NestedWorkItem[]>(initialUnlinkedWorkItems);
     const [expandedMilestones, setExpandedMilestones] = useState<Set<string>>(new Set());
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
     const [expandedWorkItems, setExpandedWorkItems] = useState<Set<string>>(new Set());
@@ -173,8 +154,9 @@ export default function ProjectSetupSheet({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [showCloseConfirm, setShowCloseConfirm] = useState(false);
     const [activeIssueKey, setActiveIssueKey] = useState<string | null>(null);
-    const tempIdCounter = useRef(-1);
+        const tempIdCounter = useRef(-1);
     const hasSyncedOpenState = useRef(false);
+    const prefixTouchedByUser = useRef(false);
     const initialSnapshot = useRef('');
     const currentSnapshot = JSON.stringify({
         name,
@@ -188,6 +170,20 @@ export default function ProjectSetupSheet({
     });
     const isDirty = Boolean(initialSnapshot.current) && initialSnapshot.current !== currentSnapshot;
 
+    const handleStartDateChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const newStartDate = e.target.value;
+    setStartDate(newStartDate);
+
+    // If current end date is before the new start date, clear it
+    if (endDate && endDate < newStartDate) {
+      setEndDate('');
+    }
+    };
+
+    const handleEndDateChange = (e: ChangeEvent<HTMLInputElement>) => {
+      setEndDate(e.target.value);
+    };
+    
     // Sync the form when the sheet is opened, but don't reset an active edit session.
     useEffect(() => {
         if (!open) {
@@ -304,6 +300,8 @@ export default function ProjectSetupSheet({
             description: '',
             start_date: '',
             end_date: '',
+            progress: 0,
+            assignee_ids: [],
             work_items: [],
         };
 
@@ -321,7 +319,7 @@ export default function ProjectSetupSheet({
         milestoneIndex: number,
         groupIndex: number,
         field: keyof NestedGroup,
-        value: string,
+        value: string | number,
     ) {
         setMilestones(previous =>
             previous.map((milestone, index) => {
@@ -331,6 +329,27 @@ export default function ProjectSetupSheet({
                     groups: milestone.groups.map((group, nestedIndex) =>
                         nestedIndex === groupIndex ? { ...group, [field]: value } : group,
                     ),
+                };
+            }),
+        );
+    }
+
+    function toggleGroupAssignee(milestoneIndex: number, groupIndex: number, userId: number) {
+        setMilestones(previous =>
+            previous.map((milestone, index) => {
+                if (index !== milestoneIndex) return milestone;
+                return {
+                    ...milestone,
+                    groups: milestone.groups.map((group, nestedIndex) => {
+                        if (nestedIndex !== groupIndex) return group;
+                        const has = (group.assignee_ids ?? []).includes(userId);
+                        return {
+                            ...group,
+                            assignee_ids: has
+                                ? (group.assignee_ids ?? []).filter((id) => id !== userId)
+                                : [...(group.assignee_ids ?? []), userId],
+                        };
+                    }),
                 };
             }),
         );
@@ -425,7 +444,7 @@ export default function ProjectSetupSheet({
     function collectIssues(): Issue[] {
         const issues: Issue[] = [];
         if (!name.trim()) issues.push({ key: 'project-name', step: 1, severity: 'error', message: 'Project name is required.' });
-        if (!itemPrefix.trim()) issues.push({ key: 'project-prefix', step: 1, severity: 'error', message: 'Work item prefix is required.' });
+        if (!itemPrefix.trim()) issues.push({ key: 'project-prefix', step: 1, severity: 'error', message: 'Project prefix is required.' });
         if (startDate && endDate && startDate > endDate) issues.push({ key: 'project-dates', step: 1, severity: 'error', message: 'Project end date must be on or after the start date.' });
 
         milestones.forEach((milestone, mi) => {
@@ -605,7 +624,7 @@ export default function ProjectSetupSheet({
 
                                 <div className="space-y-2">
                                     <Label htmlFor="item_prefix">
-                                        Work item prefix
+                                        Project prefix
                                         <span className="ml-1 font-normal text-muted-foreground">(e.g. WR)</span>
                                     </Label>
                                     <Input
@@ -621,11 +640,11 @@ export default function ProjectSetupSheet({
                             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="start_date">Start date</Label>
-                                    <Input id="start_date" type="date" value={startDate} onChange={event => setStartDate(event.target.value)} />
+                                    <Input id="start_date" type="date" value={startDate} onChange={handleStartDateChange} />
                                 </div>
                                 <div className="space-y-2">
                                     <Label htmlFor="end_date">End date</Label>
-                                    <Input id="end_date" type="date" value={endDate} onChange={event => setEndDate(event.target.value)} />
+                                    <Input id="end_date" type="date" value={endDate} onChange={handleEndDateChange} min={startDate} disabled={!startDate} />
                                 </div>
                             </div>
                         </CardContent>
@@ -872,7 +891,7 @@ export default function ProjectSetupSheet({
                         <Summary label="Name" value={name || 'Untitled project'} />
                         <Summary label="Status" value={statusName || 'Not set'} />
                         <Summary label="Dates" value={dateRange(startDate, endDate)} />
-                        <Summary label="Work item prefix" value={itemPrefix || 'Not set'} />
+                        <Summary label="Project prefix" value={itemPrefix || 'Not set'} />
                         <Summary label="Members" value={`${memberIds.length} selected`} />
                         <Summary label="Plan" value={`${milestones.length} milestones · ${totalGroups} groups · ${totalWorkItems} work items`} />
                     </CardContent>
@@ -941,6 +960,45 @@ export default function ProjectSetupSheet({
                             <div className="space-y-2">
                                 <Label>Description <span className="font-normal text-muted-foreground">(optional)</span></Label>
                                 <Input value={group.description} onChange={event => updateGroup(milestoneIndex, groupIndex, 'description', event.target.value)} placeholder="Optional" />
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 border-t pt-4 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label>Team assigned</Label>
+                                    <p className="text-xs text-muted-foreground">People working on this group.</p>
+                                    <div className="max-h-40 space-y-1.5 overflow-y-auto rounded-md border p-3">
+                                        {allUsers.filter(user => memberIds.includes(user.id)).map((user) => (
+                                            <label key={user.id} className="flex items-center gap-2 text-sm">
+                                                <Checkbox
+                                                    checked={(group.assignee_ids ?? []).includes(user.id)}
+                                                    onCheckedChange={() => toggleGroupAssignee(milestoneIndex, groupIndex, user.id)}
+                                                />
+                                                <span className="truncate">{user.username}</span>
+                                            </label>
+                                        ))}
+                                        {allUsers.filter(user => memberIds.includes(user.id)).length === 0 && (
+                                            <p className="text-sm text-muted-foreground">Add project members on the Team step first.</p>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label>Progress <span className="font-normal text-muted-foreground">({group.work_items.length === 0 ? 'manual' : 'from work items'})</span></Label>
+                                    <Input
+                                        type="number"
+                                        min={0}
+                                        max={100}
+                                        value={group.progress ?? 0}
+                                        disabled={group.work_items.length > 0}
+                                        onChange={event => updateGroup(milestoneIndex, groupIndex, 'progress', Number(event.target.value))}
+                                        placeholder="0"
+                                        title={group.work_items.length > 0 ? 'Progress is calculated from the group\u0027s work items.' : 'Set progress manually for this group.'}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        {group.work_items.length > 0
+                                            ? 'Calculated from the average of the work items below.'
+                                            : 'Set manually when a group has no work items.'}
+                                    </p>
+                                </div>
                             </div>
 
                             <div className="flex items-center justify-between border-t pt-4">

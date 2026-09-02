@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState, ChangeEvent } from 'react';
 
 export interface Member {
     id: number;
@@ -71,6 +71,21 @@ export default function WorkItemSheet({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
+
+        const handleStartDateChange = (e: ChangeEvent<HTMLInputElement>) => {
+        const newStartDate = e.target.value;
+        setStartDate(newStartDate);
+    
+        // If current end date is before the new start date, clear it
+        if (dueDate && dueDate < newStartDate) {
+          setDueDate('');
+        }
+        };
+    
+        const handleDueDateChange = (e: ChangeEvent<HTMLInputElement>) => {
+          setDueDate(e.target.value);
+        };
+        
     // Reset (create) or pre-fill (edit) the form when the sheet opens.
     useEffect(() => {
         if (!open) return;
@@ -79,9 +94,9 @@ export default function WorkItemSheet({
             setTitle(initialWorkItem.title ?? '');
             setDescription(initialWorkItem.description ?? '');
             setStatusId(String(initialWorkItem.status_id ?? ''));
-            setGroupId(String(initialWorkItem.group_id ?? ''));
+            setGroupId(initialWorkItem.group_id ? String(initialWorkItem.group_id) : 'none');
             setPriority(initialWorkItem.priority ?? '');
-            setAssigneeId(String(initialWorkItem.assignee_id ?? ''));
+            setAssigneeId(initialWorkItem.assignee_id ? String(initialWorkItem.assignee_id) : 'none');
             setCollaborators(initialWorkItem.collaborators ?? []);
             setProgress(String(initialWorkItem.progress ?? 0));
             setStartDate(initialWorkItem.start_date ?? '');
@@ -117,8 +132,8 @@ export default function WorkItemSheet({
             title,
             description,
             status_id: statusId,
-            group_id: groupId,
-            assignee_id: assigneeId,
+            group_id: groupId === 'none' || groupId === '' ? null : Number(groupId),
+            assignee_id: assigneeId === 'none' || assigneeId === '' ? null : Number(assigneeId),
             collaborators,
             priority,
             progress: Number(progress),
@@ -127,7 +142,7 @@ export default function WorkItemSheet({
         };
 
         const options = {
-            onError: (errs) => {
+            onError: (errs: Record<string, string>) => {
                 setErrors(errs);
                 setProcessing(false);
             },
@@ -191,6 +206,7 @@ export default function WorkItemSheet({
                                 <SelectValue placeholder="Select group" />
                             </SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="none">No group (ungrouped)</SelectItem>
                                 {groups.map((g) => (
                                     <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
                                 ))}
@@ -225,6 +241,7 @@ export default function WorkItemSheet({
                                 <SelectValue placeholder="Select member" />
                             </SelectTrigger>
                             <SelectContent>
+                                <SelectItem value="none">Unassigned</SelectItem>
                                 {members.map((m) => (
                                     <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
                                 ))}
@@ -275,7 +292,7 @@ export default function WorkItemSheet({
                                 id="start_date"
                                 type="date"
                                 value={startDate}
-                                onChange={(e) => setStartDate(e.target.value)}
+                                onChange={handleStartDateChange}
                             />
                             {errors.start_date && <p className="text-sm text-red-600">{errors.start_date}</p>}
                         </div>
@@ -285,7 +302,9 @@ export default function WorkItemSheet({
                                 id="due_date"
                                 type="date"
                                 value={dueDate}
-                                onChange={(e) => setDueDate(e.target.value)}
+                                onChange={handleDueDateChange}
+                                min={startDate}
+                                disabled={!startDate}
                             />
                             {errors.due_date && <p className="text-sm text-red-600">{errors.due_date}</p>}
                         </div>

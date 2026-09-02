@@ -71,6 +71,14 @@ class work_item extends Model
         static::saving(function (work_item $model) {
             $model->syncCompletionTimestamp();
         });
+
+        static::saved(function (work_item $model) {
+            $model->syncParentGroupProgress();
+        });
+
+        static::deleted(function (work_item $model) {
+            $model->syncParentGroupProgress();
+        });
     }
 
     /**
@@ -88,6 +96,33 @@ class work_item extends Model
         } elseif (! $nowComplete) {
             $this->completed_at = null;
         }
+    }
+
+    /**
+     * Recalculate the parent group's progress after this item changes.
+     *
+     * Keeps group progress consistent across every update path (forms, bulk
+     * progress, gantt moves). When a group has work items its progress is the
+     * average of them; when it has none the manual value is left untouched.
+     *
+     * @return void
+     */
+    protected function syncParentGroupProgress(): void
+    {
+        $groupId = $this->group_id ?? $this->getRawOriginal('group_id');
+
+        if (! $groupId) {
+            return;
+        }
+
+        $average = work_item::query()
+            ->where('group_id', $groupId)
+            ->avg('progress');
+
+        // Query-builder update: skips model events and activity logging noise.
+        work_item_groups::whereKey($groupId)->update([
+            'progress' => (int) round((float) $average),
+        ]);
     }
 
     /**
@@ -186,6 +221,72 @@ class work_item extends Model
     public function successors(): BelongsToMany
     {
         return $this->belongsToMany(work_item::class, 'dependencies', 'predecessor_id', 'successor_id')->withPivot(['type', 'lag'])->withTimestamps();
+    }
+
+    /**
+     * Get a list of unmet dependency gates for this work item.
+     *
+     * Dependencies are type-aware:
+     *  - finish_to_start / start_to_start   gate when this item may be STARTED
+     *  - start_to_finish  / finish_to_finish gate when this item may be FINISHED (Done)
+     *
+     * @return array{start: string[], finish: string[]} lists of unmet labels
+     */
+    public function dependencyGates(): array
+    {
+        $start = [];
+        $finish = [];
+
+        foreach ($this->predecessors()->withPivot(['type', 'lag'])->get() as $predecessor) {
+            $type = $predecessor->pivot->type;
+            $lag = (int) $predecessor->pivot->lag;
+            $state = (int) $predecessor->progress;
+            $label = "{$predecessor->title} ({$type}, +{$lag}d)";
+
+            switch ($type) {
+                case 'finish_to_start':
+                    if ($state !== 100) {
+                        $start[] = $label;
+                    }
+                    break;
+
+                case 'start_to_start':
+                    if ($state === 0) {
+                        $start[] = $label;
+                    }
+                    break;
+
+                case 'start_to_finish':
+                    if ($state === 0) {
+                        $finish[] = $label;
+                    }
+                    break;
+
+                case 'finish_to_finish':
+                    if ($state !== 100) {
+                        $finish[] = $label;
+                    }
+                    break;
+            }
+        }
+
+        return ['start' => array_values(array_unique($start)), 'finish' => array_values(array_unique($finish))];
+    }
+
+    /**
+     * Determine whether this item is blocked from being started.
+     */
+    public function isStartBlocked(): bool
+    {
+        return count($this->dependencyGates()['start']) > 0;
+    }
+
+    /**
+     * Determine whether this item is blocked from being finished.
+     */
+    public function isFinishBlocked(): bool
+    {
+        return count($this->dependencyGates()['finish']) > 0;
     }
 
     public function durationInDays(): Attribute

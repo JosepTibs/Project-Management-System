@@ -127,6 +127,9 @@ class FileAttachmentController extends Controller
             abort(401);
         }
 
+        // Project members (incl. plain members) may attach files to project items.
+        $this->authorize('comment.create', $workItem);
+
         $this->storeFiles($request, work_item::class, $workItem->id);
 
         return redirect()->back()->with('success', 'Files uploaded successfully.');
@@ -142,6 +145,13 @@ class FileAttachmentController extends Controller
         if (! auth()->check()) {
             abort(401);
         }
+
+        // Only members of the owning project may attach files to its comments.
+        $owner = $comment->commentable;
+        if (! $owner instanceof work_item) {
+            abort(403);
+        }
+        $this->authorize('comment.create', $owner);
 
         $this->storeFiles($request, comments::class, $comment->id);
 

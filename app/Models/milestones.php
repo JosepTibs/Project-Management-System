@@ -81,7 +81,7 @@ class milestones extends Model
     protected function completionPercentage(): Attribute
     {
         return Attribute::make(
-            get: fn () => round($this->attributes['work_items_avg_progress'] ?? $this->workItems()->avg('progress') ?? 0, 2),
+            get: fn () => round($this->attributes['work_items_avg_progress'] ?? $this->workItems()->avg('work_items.progress') ?? 0, 2),
         );
     }
 }

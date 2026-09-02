@@ -25,7 +25,17 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('users', UserController::class);
     Route::get('profile', [ProfileController::class, 'show'])->name('profile.show');
 
+    // Exports must be registered BEFORE the projects resource so "export"
+    // is not captured by the {project} wildcard.
+    Route::get('projects/export', [ProjectsController::class, 'export'])->name('projects.export');
+    Route::get('projects/{project}/export/gantt', [ProjectsController::class, 'exportGantt'])->name('projects.export.gantt');
+
     Route::resource('projects', ProjectsController::class)->except(['create']);
+    // Must be registered BEFORE the nested resource below, otherwise the
+    // resource's update route captures "bulk-progress" as {workItem} -> 404.
+    Route::patch('projects/{project}/work-items/bulk-progress', [WorkItemController::class, 'bulkUpdateProgress'])->name('work-items.bulk-progress');
+    // Progress-only updates (members may update their own items' progress).
+    Route::patch('projects/{project}/work-items/{workItem}/progress', [WorkItemController::class, 'updateProgress'])->name('work-items.progress');
     Route::resource('projects.work-items', WorkItemController::class);
 
     // Archive / restore (non-destructive; reversible)
@@ -53,7 +63,6 @@ Route::middleware(['auth'])->group(function () {
        
 
     Route::get('work-items', [WorkItemController::class, 'globalIndex'])->name('work-items.global');
-    Route::patch('projects/{project}/work-items/bulk-progress', [WorkItemController::class, 'bulkUpdateProgress'])->name('work-items.bulk-progress');
     Route::patch('work-items/{workItem}/status', [WorkItemController::class, 'updateStatus'])->name('work-items.status.update');
 
     Route::get('projects/{project}/groups', [ProjectSetupController::class, 'groupsIndex'])->name('projects.groups.index');

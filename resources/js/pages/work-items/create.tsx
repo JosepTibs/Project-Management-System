@@ -63,8 +63,8 @@ export default function CreateWorkItem() {
             title,
             description,
             status_id: statusId,
-            group_id: groupId,
-            assignee_id: assigneeId,
+            group_id: groupId === 'none' || groupId === '' ? null : Number(groupId),
+            assignee_id: assigneeId === 'none' || assigneeId === '' ? null : Number(assigneeId),
             priority,
             progress: Number(progress),
                         start_date: startDate || null,
@@ -152,6 +152,7 @@ export default function CreateWorkItem() {
                                             <SelectValue placeholder="Select group" />
                                         </SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value="none">No group (ungrouped)</SelectItem>
                                             {groups.map((g) => (
                                                 <SelectItem key={g.id} value={String(g.id)}>{g.name}</SelectItem>
                                             ))}
@@ -185,6 +186,7 @@ export default function CreateWorkItem() {
                                             <SelectValue placeholder="Select member" />
                                         </SelectTrigger>
                                         <SelectContent>
+                                            <SelectItem value="none">Unassigned</SelectItem>
                                             {members.map((m) => (
                                                 <SelectItem key={m.id} value={String(m.id)}>{m.name}</SelectItem>
                                             ))}

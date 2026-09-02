@@ -9,6 +9,8 @@ interface KanbanCardData {
     assignee_name: string | null;
     due_date: string | null;
     group_name: string | null;
+    assignee_id?: number | null;
+    collaborator_ids?: number[];
 }
 
 interface KanbanColumnData {
@@ -27,7 +29,16 @@ function getStatusColor(statusName: string): string {
     return STATUS_COLORS[statusName] || '#6b7280';
 }
 
-export default function KanbanColumn({ column, id }: { column: KanbanColumnData; id: string }) {
+export default function KanbanColumn({
+    column,
+    id,
+    isCardDisabled,
+}: {
+    column: KanbanColumnData;
+    id: string;
+    /** Returns true for cards the current user may not drag. */
+    isCardDisabled?: (card: KanbanCardData) => boolean;
+}) {
     const { setNodeRef, isOver } = useDroppable({ id });
 
     const color = getStatusColor(column.status);
@@ -57,7 +68,7 @@ export default function KanbanColumn({ column, id }: { column: KanbanColumnData;
             >
                 <SortableContext items={column.items.map((item) => item.id)} strategy={verticalListSortingStrategy}>
                     {column.items.map((card) => (
-                        <KanbanCard key={card.id} card={card} />
+                        <KanbanCard key={card.id} card={card} disabled={isCardDisabled?.(card) ?? false} />
                     ))}
                 </SortableContext>
 

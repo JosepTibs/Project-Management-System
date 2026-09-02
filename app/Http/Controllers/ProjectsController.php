@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\projects;
+use App\Exports\GanttXlsx;
+use App\Exports\ProjectsXlsx;
 use App\Models\User;
 use App\Models\work_item;
 use App\Models\work_item_statuses;
@@ -11,6 +13,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
 
 /**
  * Handles project CRUD operations and displays project dashboards.
@@ -26,9 +29,8 @@ class ProjectsController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
-        $isPrivileged = $user->roles->contains(function ($role) {
-            return in_array(strtolower($role->name), ['admin', 'manager']);
-        });
+        $isAdmin = $user->isAdminLevel();
+        $isManager = $user->isManagerRole();
 
         $query = projects::with('creator')
             ->withCount(['members', 'workItems' => function ($q) {
@@ -44,8 +46,9 @@ class ProjectsController extends Controller
             }, 'completion_percentage');
 
         // Archive filter: default (no param) shows active; archived=1 lists archived.
+        // Only privileged users may list archived projects — members never do.
         $archived = $request->input('project_archived');
-        if ($archived === '1' || $archived === 'true') {
+        if (($archived === '1' || $archived === 'true') && ($isAdmin || $isManager)) {
             $query->archived();
         } else {
             $query->notArchived();
@@ -53,8 +56,14 @@ class ProjectsController extends Controller
 
         $query->orderBy('created_at', 'desc');
 
-        // Non-admin/manager users only see the projects they are a member of.
-        if (!$isPrivileged) {
+        // Admins see every project. Managers are owner-scoped: projects they
+        // own, are a member of, or have an assigned/collaborated item in.
+        // Other users only see the projects they are a member of.
+        if ($isAdmin) {
+            // No additional scoping.
+        } elseif ($isManager) {
+            $query->visibleTo($user);
+        } else {
             $query->whereHas('members', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
             });
@@ -72,6 +81,7 @@ class ProjectsController extends Controller
                     'members_count' => $project->members_count,
                     'work_items_count' => $project->work_items_count,
                     'completion_percentage' => $project->completion_percentage ?? 0,
+                    'end_date' => $project->end_date?->format('Y-m-d'),
                     'archived' => $project->archived_at !== null,
                 ];
             });
@@ -135,6 +145,9 @@ class ProjectsController extends Controller
         'milestones.*.groups.*.description' => 'nullable|string',
         'milestones.*.groups.*.start_date' => 'nullable|date',
         'milestones.*.groups.*.end_date' => 'nullable|date',
+        'milestones.*.groups.*.progress' => 'nullable|integer|min:0|max:100',
+        'milestones.*.groups.*.assignee_ids' => 'nullable|array',
+        'milestones.*.groups.*.assignee_ids.*' => 'exists:users,id',
         'milestones.*.groups.*.work_items' => 'nullable|array',
         'milestones.*.groups.*.work_items.*.title' => 'nullable|string|max:255',
         'milestones.*.groups.*.work_items.*.description' => 'nullable|string',
@@ -258,7 +271,13 @@ class ProjectsController extends Controller
                     'description' => $group['description'] ?? null,
                     'start_date' => $group['start_date'] ?? null,
                     'end_date' => $group['end_date'] ?? null,
+                    'progress' => $group['progress'] ?? 0,
                 ]);
+
+                // Assign the selected members to this group (multiple assignees).
+                if (isset($group['assignee_ids'])) {
+                    $groupModel->assignees()->sync($group['assignee_ids'] ?? []);
+                }
 
                 foreach ($group['work_items'] ?? [] as $item) {
                     if (empty($item['title'])) {
@@ -301,6 +320,88 @@ class ProjectsController extends Controller
     }
 
     /**
+     * Export the (role-scoped, filter-honoring) projects list as XLSX.
+     *
+     * "Export what you see": applies the same tier scoping as index() plus
+     * the search/archived filters the user has active on screen.
+     */
+    public function export(Request $request)
+    {
+        $user = auth()->user();
+        $isAdmin = $user->isAdminLevel();
+        $isManager = $user->isManagerRole();
+
+        $query = projects::query()->with('creator')
+            ->withCount(['members', 'workItems' => function ($q) {
+                $q->whereNull('archived_at');
+            }])
+            ->selectSub(function ($query) {
+                $query->selectRaw('ROUND(AVG(progress), 2)')
+                    ->from('work_items')
+                    ->whereColumn('project_id', 'projects.id')
+                    ->whereNull('archived_at');
+            }, 'completion_percentage')
+            ->orderBy('created_at', 'desc');
+
+        $archived = $request->input('project_archived');
+        if (($archived === '1' || $archived === 'true') && ($isAdmin || $isManager)) {
+            $query->archived();
+        } else {
+            $query->notArchived();
+        }
+
+        if ($isAdmin) {
+            // No additional scoping.
+        } elseif ($isManager) {
+            $query->visibleTo($user);
+        } else {
+            $query->whereHas('members', fn ($q) => $q->where('user_id', $user->id));
+        }
+
+        if ($search = trim((string) $request->input('search', ''))) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%");
+            });
+        }
+
+        $projects = $query->get();
+
+        $scopeNote = ($archived === '1' || $archived === 'true') ? 'Archived view' : 'Active projects';
+        if ($search !== '') {
+            $scopeNote .= " · search: \"{$search}\"";
+        }
+
+        $spreadsheet = (new ProjectsXlsx($projects, $scopeNote))->build();
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new XlsxWriter($spreadsheet))->save('php://output');
+        }, 'projects-' . now()->format('Y-m-d') . '.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * Export a single project's Gantt timeline as XLSX (colored-cell bars).
+     * Visible to anyone who can view the project.
+     */
+    public function exportGantt(projects $project)
+    {
+        $this->authorize('view', $project);
+
+        $project->load(['workItems.assignee', 'workItemGroups', 'milestones']);
+        $spreadsheet = (new GanttXlsx($project))->build();
+
+        $prefix = strtolower($project->item_prefix ?: 'project');
+
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new XlsxWriter($spreadsheet))->save('php://output');
+        }, 'gantt-' . $prefix . '-' . now()->format('Y-m-d') . '.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
      * Display the specified resource.
      */
     public function show(projects $project)
@@ -308,13 +409,14 @@ class ProjectsController extends Controller
         $project->loadMissing('members');
         $this->authorize('view', $project);
 
-        $project->load(['creator', 'members.user', 'workItems.attachments.uploader', 'milestones', 'workItemGroups.workItems', 'status', 'statuses']);
+        $project->load(['creator', 'members.user', 'workItems.attachments.uploader', 'milestones', 'workItemGroups.workItems', 'workItemGroups.assignees', 'status', 'statuses']);
 
         $user = auth()->user();
 
                 // Build kanban/gantt/calendar data (mirrors kanban()).
         $kanbanWorkItems = work_item::where('project_id', $project->id)
-            ->with(['status', 'assignee', 'group'])
+            ->notArchived()
+            ->with(['status', 'assignee', 'group', 'collaborators'])
             ->get();
 
         $statuses = work_item_statuses::where('project_id', $project->id)
@@ -352,6 +454,10 @@ class ProjectsController extends Controller
                             'assignee_name' => $item->assignee?->name,
                             'due_date' => $item->due_date?->format('Y-m-d'),
                             'group_name' => $item->group?->name,
+                            // Ownership context so the board can restrict
+                            // status drags to the member's own items.
+                            'assignee_id' => $item->assignee_id,
+                            'collaborator_ids' => $item->collaborators ? $item->collaborators->pluck('id')->toArray() : [],
                         ];
                     })->values()->toArray(),
                 ];
@@ -376,6 +482,7 @@ class ProjectsController extends Controller
             'priority' => $item->priority,
             'status' => $item->status ? ['id' => $item->status->id, 'name' => $item->status->name] : null,
             'assignee' => $item->assignee ? ['id' => $item->assignee->id, 'name' => $item->assignee->name] : null,
+            'collaborator_ids' => $item->collaborators ? $item->collaborators->pluck('id')->toArray() : [],
         ])->values();
 
                 return Inertia::render('projects/show', [
@@ -427,8 +534,8 @@ class ProjectsController extends Controller
                     ];
                 }),
                 'work_item_groups' => $project->workItemGroups->map(function ($group) {
-                    $items = $group->workItems;
-                    $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : 0;
+                    $items = $group->workItems->whereNull('archived_at');
+                    $avgProgress = $items->count() > 0 ? round($items->avg('progress') ?? 0, 2) : (int) $group->progress;
 
                     return [
                         'id' => $group->id,
@@ -438,6 +545,9 @@ class ProjectsController extends Controller
                         'end_date' => $group->end_date?->format('Y-m-d'),
                         'milestone_id' => $group->milestone_id,
                         'completion_percentage' => $avgProgress,
+                        'progress' => (int) $group->progress,
+                        'assignee_ids' => $group->assignees->pluck('id')->values(),
+                        'assignees' => $group->assignees->map(fn ($a) => ['id' => $a->id, 'name' => $a->name])->values(),
                         'work_items' => $group->workItems->map(function ($item) {
                             return [
                                 'id' => $item->id,
@@ -484,6 +594,8 @@ class ProjectsController extends Controller
                                 'description' => $g->description,
                                 'start_date' => $g->start_date?->format('Y-m-d'),
                                 'end_date' => $g->end_date?->format('Y-m-d'),
+                                'progress' => (int) $g->progress,
+                                'assignee_ids' => $g->assignees->pluck('id')->values(),
                                 'work_items' => $g->workItems->map(fn ($w) => [
                                     'id' => $w->id,
                                     'title' => $w->title,
@@ -560,11 +672,12 @@ class ProjectsController extends Controller
     'milestones',
     'workItems.status',
     'workItems.assignee',
+    'workItems.collaborators',
       
     ]);
         // Fetch and group work items by status name
         $workItems = work_item::where('project_id', $project->id)
-            ->with(['status', 'assignee', 'group'])
+            ->with(['status', 'assignee', 'group', 'collaborators'])
             ->get()
             ->groupBy('status.name')
             ->map(function ($items, $statusName) {
@@ -578,6 +691,10 @@ class ProjectsController extends Controller
                             'assignee_name' => $item->assignee?->name,
                             'due_date' => $item->due_date?->format('Y-m-d'),
                             'group_name' => $item->group?->name,
+                            // Ownership context so the board can restrict
+                            // status drags to the member's own items.
+                            'assignee_id' => $item->assignee_id,
+                            'collaborator_ids' => $item->collaborators ? $item->collaborators->pluck('id')->toArray() : [],
                         ];
                     })->values()->toArray(),
                 ];
@@ -602,6 +719,7 @@ class ProjectsController extends Controller
             'project' => [
                 'id' => $project->id,
                 'name' => $project->name,
+                'created_by' => $project->created_by,
             ],
             'columns' => $columns,
             'statuses' => $statuses,
