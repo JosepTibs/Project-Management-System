@@ -2,10 +2,10 @@ import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Bell, CheckCheck, ArrowLeft } from 'lucide-react';
+import { Bell, CheckCheck, ArrowLeft, ChevronLeft, ChevronRight, Check, UserPlus, RefreshCw, Clock, MessageSquare, Loader2} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -42,66 +42,136 @@ interface PaginatedData {
 
 interface NotificationsPageProps {
     notifications: PaginatedData;
+    filter?: 'all' | 'unread';
+    unread_count?: number;
 }
 
-function getTypeIcon(type: string) {
-    switch (type) {
-        case 'WorkItemAssigned': return '👤';
-        case 'StatusChanged': return '🔄';
-        case 'DueDateReminder': return '⏰';
-        case 'CommentAdded': return '💬';
-        default: return '🔔';
-    }
+const TYPE_ICON: Record<string, { icon: typeof Bell; className: string }> = {
+    WorkItemAssigned: { icon: UserPlus, className: 'bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400' },
+    StatusChanged: { icon: RefreshCw, className: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400' },
+    DueDateReminder: { icon: Clock, className: 'bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-400' },
+    CommentAdded: { icon: MessageSquare, className: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400' },
+};
+
+function TypeIcon({ type }: { type: string }) {
+    const entry = TYPE_ICON[type] ?? { icon: Bell, className: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400' };
+    const Icon = entry.icon;
+    return (
+        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', entry.className)}>
+            <Icon className="h-4 w-4" />
+        </span>
+    );
 }
 
-export default function NotificationsIndex({ notifications }: NotificationsPageProps) {
+export default function NotificationsIndex({
+    notifications,
+    filter = 'all',
+    unread_count = 0,
+}: NotificationsPageProps) {
     const [items, setItems] = useState(notifications.data);
-    const [pagination, setPagination] = useState({
-        current_page: notifications.current_page,
-        last_page: notifications.last_page,
-        from: notifications.from,
-        to: notifications.to,
-        total: notifications.total,
-        links: notifications.links,
-    });
+    const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+    const [isNavigating, setIsNavigating] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(unread_count);
+
+    useEffect(() => {
+        setItems(notifications.data);
+        setUnreadCount(unread_count);
+    }, [notifications.data, unread_count]);
 
     async function markAsRead(id: string) {
+        const snapshot = items;
+        setItems((prev) =>
+            prev.map((n) => (n.id === id ? { ...n, is_unread: false, read_at: new Date().toISOString() } : n))
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+        setPendingIds((prev) => new Set(prev).add(id));
         try {
-            await apiFetch(`/api/notifications/${id}/read`, { method: 'POST' });
-            setItems(prev =>
-                prev.map(n => n.id === id ? { ...n, is_unread: false, read_at: new Date().toISOString() } : n)
-            );
+            await apiFetch(`/api/notifications/${id}/read`, { 
+                method: 'POST',
+                headers: csrfHeader()
+            });
         } catch (e) {
             console.error('Failed to mark as read', e);
+            setItems(snapshot);
+            setUnreadCount((prev) => prev + 1);
+        } finally {
+            setPendingIds((prev) => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
+            });
         }
     }
 
     async function markAllAsRead() {
+        const snapshot = items;
+        setItems((prev) => prev.map((n) => ({ ...n, is_unread: false, read_at: new Date().toISOString() })));
+        setUnreadCount(0);
         try {
-            await apiFetch('/api/notifications/mark-all-read', { method: 'POST' });
-            setItems(prev => prev.map(n => ({ ...n, is_unread: false, read_at: new Date().toISOString() })));
+            await apiFetch('/api/notifications/mark-all-read', { 
+                method: 'POST',
+                headers: csrfHeader()
+            });
         } catch (e) {
             console.error('Failed to mark all as read', e);
+            setItems(snapshot);
+            setUnreadCount(unread_count);
         }
+    }
+
+    function csrfHeader(): Record<string, string> {
+        const token = document.cookie.split('; ').find(row => row.startsWith('XSRF-TOKEN='))?.split('=')[1] || '';
+        return {
+            'X-XSRF-TOKEN': decodeURIComponent(token),
+            'Content-Type': 'application/json',
+        };
+    }
+
+    function handleOpen(notification: NotificationData) {
+        if (notification.is_unread) {
+            markAsRead(notification.id);
+        }
+        if (notification.data.url) {
+            setIsNavigating(true);
+            router.visit(notification.data.url),{ preserveState: true, onFinish: () => setIsNavigating(false) };
+        }
+    }
+
+    function goToFilter(next: 'all' | 'unread') {
+        if (next === filter) return;
+        setIsNavigating(true);
+        router.get(
+            '/notifications',
+            { filter: next },
+            { preserveState: true, onFinish: () => setIsNavigating(false) }
+        );
     }
 
     function handlePageChange(url: string | null) {
         if (url) {
-            router.get(url);
+            setIsNavigating(true);
+            router.get(url, {}, { preserveState: true ,onFinish: () => setIsNavigating(false) });
         }
     }
-
-    const unreadCount = items.filter(n => n.is_unread).length;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Notifications" />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
-                <div className="flex items-center justify-between">
-                    <div>
+                <div className="flex items-center gap-3">
+                    <Link
+                        href="/dashboard"
+                        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-neutral-100 hover:text-foreground dark:hover:bg-neutral-800"
+                        aria-label="Back"
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                    </Link>
+                    <div className="flex-1">
                         <h1 className="text-2xl font-bold">Notifications</h1>
                         <p className="text-sm text-muted-foreground">
-                            Showing {pagination.from}-{pagination.to} of {pagination.total} notifications
+                            {notifications.total > 0
+                                ? `Showing ${notifications.from}-${notifications.to} of ${notifications.total}`
+                                : 'No notifications'}
                         </p>
                     </div>
                     {unreadCount > 0 && (
@@ -112,72 +182,139 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                     )}
                 </div>
 
-                <div className="rounded-lg border border-sidebar-border/70">
+                {/* Filter tabs — merged directly onto the list container, no extra divider */}
+                <div
+                    className={cn(
+                        'overflow-hidden rounded-lg border border-sidebar-border/70 transition-opacity',
+                        isNavigating && 'opacity-60'
+                    )}
+                >
+                    <div className="flex items-center gap-1 border-b bg-neutral-50/50 px-3 pt-2 dark:bg-neutral-900/40">
+                        <button
+                            onClick={() => goToFilter('all')}
+                            className={cn(
+                                'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                                filter === 'all'
+                                    ? 'border-blue-600 text-foreground'
+                                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                            )}
+                        >
+                            All
+                        </button>
+                        <button
+                            onClick={() => goToFilter('unread')}
+                            className={cn(
+                                'flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+                                filter === 'unread'
+                                    ? 'border-blue-600 text-foreground'
+                                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                            )}
+                        >
+                            Unread
+                            {unreadCount > 0 && (
+                                <span className="rounded-full bg-blue-100 px-1.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900 dark:text-blue-300">
+                                    {unreadCount}
+                                </span>
+                            )}
+                        </button>
+                    </div>
+
                     {items.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16">
                             <Bell className="mb-4 h-12 w-12 text-muted-foreground" />
-                            <p className="text-lg font-medium">No notifications yet</p>
+                            <p className="text-lg font-medium">
+                                {filter === 'unread' ? 'No unread notifications' : 'No notifications yet'}
+                            </p>
                             <p className="text-sm text-muted-foreground">
-                                You'll see notifications here when you're assigned to work items or when statuses change.
+                                {filter === 'unread'
+                                    ? "You're all caught up."
+                                    : "You'll see notifications here when you're assigned to work items or when statuses change."}
                             </p>
                         </div>
                     ) : (
                         <div>
-                            {items.map((notification) => (
-                                <div
-                                    key={notification.id}
-                                    className={cn(
-                                        'flex cursor-pointer items-start gap-4 border-b px-6 py-4 transition-colors last:border-0 hover:bg-neutral-50 dark:hover:bg-neutral-800',
-                                        notification.is_unread && 'bg-blue-50 dark:bg-blue-950/30'
-                                    )}
-                                    onClick={() => {
-                                        if (notification.is_unread) {
-                                            markAsRead(notification.id);
-                                        }
-                                        if (notification.data.url) {
-                                            router.visit(notification.data.url);
-                                        }
-                                    }}
-                                >
-                                    <span className="mt-1 text-2xl">{getTypeIcon(notification.type)}</span>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-start justify-between gap-4">
-                                            <p className={cn('text-sm', notification.is_unread ? 'font-semibold' : 'text-muted-foreground')}>
+                            {items.map((notification) => {
+                                const clickable = Boolean(notification.data.url);
+                                const pending = pendingIds.has(notification.id);
+                                return (
+                                    <div
+                                        key={notification.id}
+                                        role={clickable ? 'button' : undefined}
+                                        tabIndex={clickable ? 0 : undefined}
+                                        onClick={() => handleOpen(notification)}
+                                        onKeyDown={(e) => {
+                                            if (clickable && (e.key === 'Enter' || e.key === ' ')) {
+                                                e.preventDefault();
+                                                handleOpen(notification);
+                                            }
+                                        }}
+                                        className={cn(
+                                            'flex items-center gap-3 border-b border-l-2 px-4 py-3 transition-colors last:border-b-0',
+                                            clickable && 'cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800',
+                                            notification.is_unread
+                                            ? 'border-l-blue-600 bg-blue-50/80 dark:bg-blue-950/30'
+                                            : 'border-l-transparent bg-neutral-50/50 dark:bg-neutral-800/50'
+
+                                        )}
+                                    >
+                                        <TypeIcon type={notification.type} />
+                                        <div className="min-w-0 flex-1">
+                                            <p
+                                                className={cn(
+                                                    'truncate text-sm',
+                                                    notification.is_unread ? 'font-semibold' : 'text-muted-foreground'
+                                                )}
+                                            >
                                                 {notification.data.message}
                                             </p>
-                                            {notification.is_unread && (
-                                                <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-blue-600" />
-                                            )}
+                                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                                                <span>{notification.created_at}</span>
+                                                {notification.data.project_name && (
+                                                    <>
+                                                        <span>•</span>
+                                                        <span className="truncate">{notification.data.project_name}</span>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                                            <span>{notification.created_at}</span>
-                                            {notification.data.project_name && (
-                                                <>
-                                                    <span>•</span>
-                                                    <span>{notification.data.project_name}</span>
-                                                </>
-                                            )}
-                                            <span>•</span>
-                                            <span className="capitalize">{notification.type_label}</span>
-                                        </div>
+
+                                        {notification.is_unread && (
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    markAsRead(notification.id);
+                                                }}
+                                                disabled={pending}
+                                                title="Mark as read"
+                                                className="shrink-0 rounded-full p-1.5 text-muted-foreground/70 transition-colors hover:bg-neutral-200 hover:text-foreground disabled:opacity-50 dark:hover:bg-neutral-700"
+                                            >
+                                                {pending ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Check className="h-4 w-4" />
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
 
                 {/* Pagination */}
-                {pagination.last_page > 1 && (
+                {notifications.last_page > 1 && (
                     <div className="flex items-center justify-center gap-2">
-                        {pagination.links.map((link, index) => {
+                        {notifications.links.map((link, index) => {
                             if (link.label === '...') {
                                 return (
                                     <span key={index} className="px-2 text-sm text-muted-foreground">
-                                        ...
+                                        …
                                     </span>
                                 );
                             }
+                            const isPrev = link.label.toLowerCase().includes('previous');
+                            const isNext = link.label.toLowerCase().includes('next');
                             return (
                                 <Button
                                     key={index}
@@ -185,8 +322,15 @@ export default function NotificationsIndex({ notifications }: NotificationsPageP
                                     size="sm"
                                     onClick={() => handlePageChange(link.url)}
                                     disabled={!link.url}
-                                    dangerouslySetInnerHTML={{ __html: link.label }}
-                                />
+                                >
+                                    {isPrev ? (
+                                        <ChevronLeft className="h-4 w-4" />
+                                    ) : isNext ? (
+                                        <ChevronRight className="h-4 w-4" />
+                                    ) : (
+                                        link.label
+                                    )}
+                                </Button>
                             );
                         })}
                     </div>

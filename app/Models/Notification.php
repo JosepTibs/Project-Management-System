@@ -21,8 +21,10 @@ class Notification extends DatabaseNotification
     {
         return match (class_basename($this->type)) {
             'WorkItemAssigned' => 'Assigned',
-            'StatusChanged' => 'StatusUpdated',
+            'StatusChanged' => 'Status Updated',
             'DueDateReminder' => 'Due Date Reminder',
+            'WorkItemCompleted' => 'Completed',
+            'AdminDigest' => 'Daily Digest',
             'CommentAdded' => 'New Comment',
             default => 'Notification',
         };

@@ -11,6 +11,7 @@ import { Plus, Search, Pencil, Trash2, ArrowLeft} from 'lucide-react';
 import WorkItemSheet, { type EditWorkItemData } from '@/components/work-items/work-item-sheet';
 import { getDueStatus } from '@/lib/project-due';
 import { useState, useMemo } from 'react';
+import { confirmRequest } from '@/components/confirm-dialog';
 
 interface Status {
     id: number;
@@ -197,8 +198,14 @@ export default function WorkItemsIndex() {
         );
     }
 
-    function handleDelete(itemId: number, title: string) {
-        if (confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
+    async function handleDelete(itemId: number, title: string) {
+        const ok = await confirmRequest({
+            title: `Delete "${title}"?`,
+            description: 'This work item will be permanently removed. This action cannot be undone.',
+            confirmLabel: 'Delete work item',
+        });
+
+        if (ok) {
             router.delete(`/projects/${project.id}/work-items/${itemId}`, { preserveScroll: true });
         }
     }

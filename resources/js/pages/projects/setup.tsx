@@ -6,7 +6,7 @@ import ProjectSetupSheet, {
     type StatusOption,
     type UserOption,
     type WorkItemStatusOption,
-} from '@/components/projects/project-setup-sheet';
+} from '@/components/projects/setup/project-setup-sheet-refactored';
 
 interface SetupPageProps extends Record<string, unknown> {
     project: {

@@ -3,6 +3,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useAppearance } from '@/hooks/use-appearance';
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { HTMLAttributes } from 'react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 export default function AppearanceToggleDropdown({ className = '', ...props }: HTMLAttributes<HTMLDivElement>) {
     const { appearance, updateAppearance } = useAppearance();
@@ -20,6 +21,7 @@ export default function AppearanceToggleDropdown({ className = '', ...props }: H
 
     return (
         <div className={className} {...props}>
+            <TooltipProvider delayDuration={200}>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-9 w-9 rounded-md">
@@ -48,6 +50,7 @@ export default function AppearanceToggleDropdown({ className = '', ...props }: H
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
+            </TooltipProvider>
         </div>
     );
 }

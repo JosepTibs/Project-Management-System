@@ -1,8 +1,9 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Maximize2, Minimize2 } from 'lucide-react';
+import BackButton from '@/components/navigation/back-button';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { useState } from 'react';
 import InteractiveGanttChart from '@/components/interactive-gantt-chart';
 import KanbanBoard from '@/components/kanban/kanban-board';
@@ -78,12 +79,7 @@ export default function Gantt() {
 
             <div className={`flex flex-col gap-4 rounded-xl p-4 ${isFullscreen ? 'h-screen' : 'h-full flex-1'}`}>
                 <div className="flex items-center gap-4">
-                    <Link href={`/projects/${project.id}`}>
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <BackButton defaultUrl={`/projects/${project.id}`} />
                         <h1 className="gap-5 text-2xl font-bold">{project.name} — {currentView.charAt(0).toUpperCase() + currentView.slice(1)}</h1>
                         <div className=" ml-auto flex gap-2">
                             <ViewSelector 

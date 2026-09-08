@@ -6,6 +6,7 @@ import { MessageSquare, Edit2, Trash2, ChevronDown, ChevronRight, Paperclip } fr
 import CommentInput from './comment-input';
 import FileAttachmentList from '@/components/attachments/file-attachment-list';
 import FileAttachmentUploader from '@/components/attachments/file-attachment-uploader';
+import { confirmRequest } from '../confirm-dialog';
 
 interface UserData {
     id: number;
@@ -77,8 +78,14 @@ export default function CommentThread({ comment, authUserId }: CommentThreadProp
         });
     }
 
-    function handleDelete(id: number) {
-        if (confirm('Are you sure you want to delete this comment?')) {
+    async function handleDelete(id: number) {
+        const ok = await confirmRequest({
+            title: 'Delete this comment?',
+            description: 'The comment and any replies will be permanently removed. This action cannot be undone.',
+            confirmLabel: 'Delete comment',
+        });
+
+        if (ok) {
             router.delete(`/comments/${id}`, { preserveScroll: true });
         }
     }

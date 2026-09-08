@@ -1,6 +1,7 @@
 import { Head } from '@inertiajs/react';
-import { ArrowLeft, House, ShieldX, FileQuestion } from 'lucide-react';
+import { House, ShieldX, FileQuestion } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import BackButton from '@/components/navigation/back-button';
 
 interface ErrorPageProps extends Record<string, unknown> {
     status: number;
@@ -52,10 +53,7 @@ export default function ErrorPage({ status }: ErrorPageProps) {
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => window.history.back()}>
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Go back
-                        </Button>
+                        <BackButton defaultUrl="/dashboard" label="Go back" />
                         <Button asChild size="sm">
                             <a href="/dashboard">
                                 <House className="mr-2 h-4 w-4" />

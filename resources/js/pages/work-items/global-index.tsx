@@ -13,6 +13,7 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { useState, useMemo, useEffect } from 'react';
 import WorkItemSheet, { type EditWorkItemData } from '@/components/work-items/work-item-sheet';
 import { getDueStatus } from '@/lib/project-due';
+import { confirmRequest } from '@/components/confirm-dialog';
 
 interface Status {
     id?: number;
@@ -92,10 +93,15 @@ function getPriorityVariant(priority: string) {
 }
 
 
-function handleDelete(projectId:number, workItemId:number) {
-        if (confirm(`Are you sure you want to delete? This action cannot be undone.`)) {
+async function handleDelete(projectId:number, workItemId:number, title?: string) {
+        const ok = await confirmRequest({
+            title: title ? `Delete "${title}"?` : 'Delete work item?',
+            description: 'This work item will be permanently removed. This action cannot be undone.',
+            confirmLabel: 'Delete work item',
+        });
+
+        if (ok) {
             router.delete(`/projects/${projectId}/work-items/${workItemId}`, { preserveScroll: true });
-            
         }
     }
 
@@ -359,7 +365,7 @@ export default function GlobalWorkItemsIndex() {
                                         {filteredItems.map((item: WorkItemData,) => (
                                             <TableRow key={item.id}>
                                                 <TableCell className="font-medium max-w-xs truncate hover:underline leading-tight">
-                                                    <Link href={`/projects/${item.project?.id}/work-items/${item.id}`}>
+                                                    <Link href={`/projects/${item.project?.id}/work-items/${item.id}?from=all`}>
                                                     {item.title} </Link>
                                                 </TableCell>
                                                 <TableCell>
@@ -426,7 +432,7 @@ export default function GlobalWorkItemsIndex() {
                                                             </DropdownMenuTrigger>
                                                             <DropdownMenuContent align="end">
                                                                 <DropdownMenuItem asChild>
-                                                                    <Link href={`/projects/${item.project?.id}/work-items/${item.id}`}>
+                                                                    <Link href={`/projects/${item.project?.id}/work-items/${item.id}?from=all`}>
                                                                         View
                                                                     </Link>
                                                                 </DropdownMenuItem>

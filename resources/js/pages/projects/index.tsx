@@ -8,12 +8,8 @@ import { useState, useMemo, useEffect } from 'react';
 import { ViewToggle } from '@/components/tables/view-toggle';
 import { ProjectsCardView } from '@/components/tables/projects-card-view';
 import { ProjectsTableView } from '@/components/tables/projects-table-view';
-import ProjectSetupSheet, {
-    type StatusOption,
-    type UserOption,
-    type WorkItemStatusOption,
-    type NestedMilestone,
-} from '@/components/projects/project-setup-sheet';
+import ProjectSetupSheet, { type StatusOption, type UserOption, type WorkItemStatusOption, type NestedMilestone} from '@/components/projects/setup/project-setup-sheet-refactored';
+import { confirmRequest } from '@/components/confirm-dialog';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -107,8 +103,14 @@ export default function ProjectsIndex() {
         );
     }, [projects, search]);
 
-    function handleDelete(projectId: number, projectName: string) {
-        if (confirm(`Are you sure you want to delete "${projectName}"? This action cannot be undone.`)) {
+    async function handleDelete(projectId: number, projectName: string) {
+        const ok = await confirmRequest({
+            title: `Delete "${projectName}"?`,
+            description: 'This will permanently remove the project, its groups, milestones and work items. This action cannot be undone.',
+            confirmLabel: 'Delete project',
+        });
+
+        if (ok) {
             router.delete(`/projects/${projectId}`, { preserveScroll: true });
         }
     }

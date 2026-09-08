@@ -25,7 +25,7 @@ class WorkItemController extends Controller
     /**
      * Display the specified work item with its details and comments.
      */
-    public function show(projects $project, work_item $workItem)
+    public function show(projects $project, work_item $workItem, Request $request)
     {
         // Remember where the user came from for the Back button
         // Guard: don't overwrite if coming from the edit page (after update redirect)
@@ -140,7 +140,12 @@ class WorkItemController extends Controller
         });
 
         return Inertia::render('work-items/show', [
-            'backUrl' => session('work_item_back_to', route('projects.work-items.index', $project->id)),
+            'backUrl' => match ($request->query('from')) {
+    'project' => route('projects.show', $project->id),
+    'all' => route('work-items.global'),
+    default => session('work_item_back_to', route('projects.work-items.index', $project->id)),
+},
+
             'workItems' => [
                 'id' => $workItem->id,
                 'title' => $workItem->title,

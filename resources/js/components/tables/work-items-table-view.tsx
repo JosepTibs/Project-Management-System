@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Plus, Search, Pencil, Trash2, CheckSquare, Square } from 'lucide-react';
-import type { WorkItem, Status, Group, Member } from '@/pages/projects/show';
+import { confirmRequest } from '@/components/confirm-dialog';
 
 interface WorkItemsTableViewProps {
     workItems: WorkItem[];
@@ -17,6 +17,13 @@ interface WorkItemsTableViewProps {
     groups: Group[];
     members: Member[];
 }
+
+interface WorkItem { id:number; title:string; description?:string|null; priority:string;
+    status?:{id:number;name:string}|null; assignee?:{name:string}|null; group_id?:number|null;
+    progress:number; due_date?:string|null; }
+interface Status { id:number; name:string; }
+interface Group  { id:number; name:string; }
+interface Member { id:number; name:string; }
 
 export function WorkItemsTableView({
     workItems,
@@ -79,8 +86,14 @@ export function WorkItemsTableView({
         );
     }
 
-    function handleDelete(itemId: number, title: string) {
-        if (confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
+    async function handleDelete(itemId: number, title: string) {
+        const ok = await confirmRequest({
+            title: `Delete "${title}"?`,
+            description: 'This work item will be permanently removed. This action cannot be undone.',
+            confirmLabel: 'Delete work item',
+        });
+
+        if (ok) {
             router.delete(`/projects/${projectId}/work-items/${itemId}`, { preserveScroll: true });
         }
     }
@@ -231,7 +244,7 @@ export function WorkItemsTableView({
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-muted-foreground">
-                                                {item.assignee?.name || '—'}
+                                                {item.assignee?.name || 'ï¿½'}
                                             </TableCell>
                                             <TableCell className="text-muted-foreground">
                                                 {item.due_date}

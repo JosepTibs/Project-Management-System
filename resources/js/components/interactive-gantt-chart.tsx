@@ -3,6 +3,7 @@ import { router } from '@inertiajs/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Link2, Link2Off, ChevronRight, ChevronDown, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import AddDependencyDialog from '@/components/dependencies/add-dependency-dialog';
+import { confirmRequest } from '@/components/confirm-dialog';
 
 
 interface WorkItem {
@@ -60,6 +61,8 @@ interface TimelineItem {
     description?: string;
     collapsed?: boolean;
     assignee?: { id: number; name: string } | null;
+    /** Milestones only: real planned start, kept for tooltip display even though the diamond renders at the target date. */
+    plannedStart?: Date;
 }
 
 interface InteractiveGanttChartProps {
@@ -103,9 +106,7 @@ const VIEW_DAYS_PER_PERIOD: Record<ViewMode, number> = {
     year: 365.25,
 };
 
-// Bars never get narrower than this, so short tasks stay visible and
-// draggable even in quarter/year views.
-const MIN_BAR_WIDTH = 60;
+
 
 // Height of each bar type, kept as whole numbers so bars can be vertically
 // centered with integer-pixel tops (avoids sub-pixel clipping of rounded edges).
@@ -343,6 +344,9 @@ function groupPeriods(periods: TimePeriod[]): PeriodGroup[] {
 
 type DragMode = "move" | "resize-start" | "resize-end" | "dependency" | null;
 
+/** Recursive node type used for the nested (renderable) view of the timeline. */
+type GanttTreeItem = TimelineItem & { children: GanttTreeItem[] };
+
 interface DragState {
     mode: DragMode;
     itemId: string;
@@ -380,7 +384,7 @@ export default function InteractiveGanttChart({
     const [addDepOpen, setAddDepOpen] = useState(false);
     const [collapsedMilestones, setCollapsedMilestones] = useState<Set<number>>(new Set());
     const [collapsedGroups, setCollapsedGroups] = useState<Set<number>>(new Set());
-    const [collapsedTasks, setCollapsedTasks] = useState<Set<number>>(() => new Set(workItems.map((w) => w.id)));
+    const [collapsedTasks, setCollapsedTasks] = useState<Set<number>>(() => new Set());
     const containerRef = useRef<HTMLDivElement>(null);
     const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const deleteDepHoverRef = useRef(false);
@@ -393,7 +397,7 @@ export default function InteractiveGanttChart({
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [containerWidth, setContainerWidth] = useState(0);
 
-    const [viewMode, setViewMode] = useState<ViewMode>("day");
+    const [viewMode, setViewMode] = useState<ViewMode>("week");
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const effectiveNameWidth = sidebarCollapsed ? COLLAPSED_NAME_WIDTH : NAME_WIDTH;
 
@@ -456,8 +460,15 @@ export default function InteractiveGanttChart({
     );
 
     const removeDependency = useCallback(
-        (dep: Dependency) => {
-            if (!window.confirm(`Remove dependency ${dep.predecessor.title} → ${dep.successor.title}?`)) return;
+        async (dep: Dependency) => {
+            const ok = await confirmRequest({
+                title: 'Remove dependency?',
+                description: `${dep.predecessor.title} → ${dep.successor.title} will no longer be linked.`,
+                confirmLabel: 'Remove',
+            });
+
+            if (!ok) return;
+
             router.delete(`/projects/${projectId}/dependencies/${dep.id}`, {
                 preserveScroll: true,
                 preserveState: true,
@@ -590,8 +601,9 @@ export default function InteractiveGanttChart({
             result.push({
                 id: `milestone-${milestone.id}`,
                 name: milestone.name,
-                start: milestoneStart,
-                end: milestoneTarget,
+                start:  milestoneTarget,
+                end:  milestoneTarget,
+                plannedStart: milestoneStart,
                 type: "milestone",
                 progress: typeof milestone.completion_percentage === "number" ? milestone.completion_percentage : milestone.completed_at ? 100 : 0,
                 level: 0,
@@ -602,7 +614,7 @@ export default function InteractiveGanttChart({
             for (const group of groups) {
                 const groupStart = group.start_date ? new Date(group.start_date) : new Date();
                 const groupEnd = group.end_date ? new Date(group.end_date) : new Date();
-                const isCollapsed = collapsedMilestones.has(milestone.id) || collapsedGroups.has(group.id);
+                const isCollapsed = collapsedGroups.has(group.id);
 
                 result.push({
                     id: `group-${group.id}`,
@@ -616,35 +628,35 @@ export default function InteractiveGanttChart({
                     collapsed: isCollapsed,
                 });
 
-                if (!isCollapsed) {
-                    // Tasks belonging to this group only
-                    const groupTasks = localWorkItems.filter((item) => item.group_id === group.id);
+                // Tasks always stay mounted so group collapse can animate;
+                // visibility is handled by the animated wrapper in the render.
+                // Tasks belonging to this group only
+                const groupTasks = localWorkItems.filter((item) => item.group_id === group.id);
 
-                    for (const task of groupTasks) {
-                        if (!task.start_date && !task.due_date) continue;
+                for (const task of groupTasks) {
+                    if (!task.start_date && !task.due_date) continue;
 
-                        const taskStart = task.start_date
-                            ? new Date(task.start_date)
-                            : new Date(task.due_date!);
-                        const taskEnd = task.due_date
-                            ? new Date(task.due_date)
-                            : new Date(task.start_date!);
-                        if (isNaN(taskStart.getTime()) || isNaN(taskEnd.getTime())) continue;
+                    const taskStart = task.start_date
+                        ? new Date(task.start_date)
+                        : new Date(task.due_date!);
+                    const taskEnd = task.due_date
+                        ? new Date(task.due_date)
+                        : new Date(task.start_date!);
+                    if (isNaN(taskStart.getTime()) || isNaN(taskEnd.getTime())) continue;
 
-                        result.push({
-                            id: `task-${task.id}`,
-                            taskId: task.id,
-                            name: task.title,
-                            start: taskStart,
-                            end: taskEnd,
-                            type: "task",
-                            progress: task.progress ?? 0,
-                            level: 2,
-                            description: task.description,
-                            assignee: task.assignee,
-                            collapsed: collapsedTasks.has(task.id),
-                        });
-                    }
+                    result.push({
+                        id: `task-${task.id}`,
+                        taskId: task.id,
+                        name: task.title,
+                        start: taskStart,
+                        end: taskEnd,
+                        type: "task",
+                        progress: task.progress ?? 0,
+                        level: 2,
+                        description: task.description,
+                        assignee: task.assignee,
+                        collapsed: collapsedTasks.has(task.id),
+                    });
                 }
             }
         }
@@ -683,6 +695,32 @@ export default function InteractiveGanttChart({
 
         return result;
     }, [localWorkItems, localMilestones, localGroups, collapsedMilestones, collapsedGroups, collapsedTasks]);
+
+    // Nested view of `items` used for rendering. Children stay mounted inside
+    // animated collapse wrappers (grid-template-rows 0fr/1fr trick) so the
+    // collapse/expand animates smoothly instead of rows popping in/out.
+    const itemsTree = useMemo<GanttTreeItem[]>(() => {
+        const tree: GanttTreeItem[] = [];
+        let currentMilestone: GanttTreeItem | null = null;
+        let currentGroup: GanttTreeItem | null = null;
+
+        for (const item of items) {
+            if (item.type === "milestone") {
+                currentMilestone = { ...item, children: [] };
+                currentGroup = null;
+                tree.push(currentMilestone);
+            } else if (item.type === "group") {
+                currentGroup = { ...item, children: [] };
+                if (currentMilestone) currentMilestone.children.push(currentGroup);
+                else tree.push(currentGroup);
+            } else if (item.level >= 2 && currentGroup) {
+                currentGroup.children.push({ ...item, children: [] });
+            } else {
+                tree.push({ ...item, children: [] });
+            }
+        }
+        return tree;
+    }, [items]);
 
     // NOTE: this memo uses BASE_UNIT_WIDTH (a fixed constant) rather than the
     // dynamic UNIT_WIDTH, since UNIT_WIDTH below depends on totalUnits and would
@@ -789,17 +827,17 @@ export default function InteractiveGanttChart({
             if(pos.x < rect.left + EDGE_TRESHOLD){
                 const intensity = 1 -Math.max(pos.x - rect.left, 0) / EDGE_TRESHOLD;
                 dx = -Math.ceil(MAX_SCORLL_SPEED * intensity);
-            } else if(pos.x > rect.left + EDGE_TRESHOLD){
-                const intensity = 1 -Math.max(rect.right - pos.x, 0) /EDGE_TRESHOLD;
+            } else if(pos.x > rect.right - EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(rect.bottom - pos.x, 0) /EDGE_TRESHOLD;
                 dx = Math.ceil(MAX_SCORLL_SPEED * intensity);
             }
 
             //Vertical Edges
-             if(pos.y < rect.left + EDGE_TRESHOLD){
-                const intensity = 1 -Math.max(pos.y - rect.left, 0) / EDGE_TRESHOLD;
+             if(pos.y < rect.top + EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(pos.y - rect.top, 0) / EDGE_TRESHOLD;
                 dy = -Math.ceil(MAX_SCORLL_SPEED * intensity);
-            } else if(pos.x > rect.left + EDGE_TRESHOLD){
-                const intensity = 1 -Math.max(rect.right - pos.y, 0) /EDGE_TRESHOLD;
+            } else if(pos.x > rect.bottom - EDGE_TRESHOLD){
+                const intensity = 1 -Math.max(rect.bottom - pos.y, 0) /EDGE_TRESHOLD;
                 dy = Math.ceil(MAX_SCORLL_SPEED * intensity);
             }
 
@@ -812,7 +850,7 @@ export default function InteractiveGanttChart({
                 );
             }
         },[])
-
+        
         const UNIT_WIDTH = useMemo(() => {
         const baseWidth = VIEW_UNIT_WIDTH[viewMode];
         if( !containerWidth || totalUnits === 0) return baseWidth;
@@ -875,7 +913,7 @@ export default function InteractiveGanttChart({
     const handleDragStart = useCallback(
         (e: React.MouseEvent, item: TimelineItem, mode: DragMode) => {
             if (readOnly) return;
-            if (item.type !== "task" && item.type !== "group" && item.type !== "milestone") return;
+            if (item.type !== "task" && item.type !== "group" ) return;
             e.preventDefault();
             e.stopPropagation();
             dragMovedRef.current = false;
@@ -1010,8 +1048,8 @@ export default function InteractiveGanttChart({
                 if (!containerRect) return false;
 
                 // Convert preview x (container-relative) to client x
-                const clientX = depPreview.x + containerRect.left;
-                const clientY = depPreview.y + containerRect.top;
+                const clientX = depPreview.x; 
+                const clientY = depPreview.y;
 
                 return (
                     clientX >= rect.left &&
@@ -1162,6 +1200,8 @@ export default function InteractiveGanttChart({
                     }, 300);
                 } else if (item.type === "group") {
                     const groupId = parseInt(item.id.replace('group-', ''));
+                    const offsetDays = differenceInDays(newStart, item.start);
+
                     setLocalGroups(prev => prev.map(g =>
                         g.id === groupId ?
                             {
@@ -1170,6 +1210,22 @@ export default function InteractiveGanttChart({
                                 end_date: newEnd.toISOString().slice(0, 10),
                             } : g
                     ));
+
+                    setLocalWorkItems((prev) =>
+                        prev.map((wi) =>
+                            wi.group_id === groupId
+                                ? {
+                                      ...wi,
+                                      start_date: wi.start_date 
+                                          ? addDays(new Date(wi.start_date), offsetDays).toISOString().slice(0, 10)
+                                          : null,
+                                      due_date: wi.due_date
+                                          ? addDays(new Date(wi.due_date), offsetDays).toISOString().slice(0, 10)
+                                          : null,
+                                  }
+                                : wi
+                        )
+                    );
 
                     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
                     saveTimerRef.current = setTimeout(() => {
@@ -1326,6 +1382,7 @@ export default function InteractiveGanttChart({
         }
 
                 setDragState(null);
+                dragMovedRef.current = false;
     }, [dragState, depPreview, items, projectId, workItems, PIXELS_PER_DAY, findGroupForTask, findMilestoneForGroup]);
 
     useEffect(() => {
@@ -1468,7 +1525,10 @@ export default function InteractiveGanttChart({
                     </div>
 
                     {/* ── Rows ── */}
-                    {items.map((item, index) => {
+                    {(() => {
+                        let stripe = 0;
+                        const renderRow = (item: TimelineItem) => {
+                        const index = stripe++;
                         const layout = getItemLayout(item);
                         const isEvenRow = index % 2 === 0;
                         const isDragging = dragState?.itemId === item.id;
@@ -1477,7 +1537,7 @@ export default function InteractiveGanttChart({
                             <React.Fragment key={item.id}>
                                 {/* Sidebar cell */}
                                 <div
-                                    className={`sticky left-0 z-20 flex items-center border-b px-3 transition-colors bg-background`}
+                                    className={`sticky left-0 z-40 flex items-center border-b px-3 transition-colors bg-background`}
                                     style={{ height: ROW_HEIGHT, paddingLeft: sidebarCollapsed ? 0 : 12 + item.level * 20 }}
                                 >
                                     <div className={`min-w-0 ${sidebarCollapsed ? "w-full flex items-center justify-center" : "flex-1"}`}>
@@ -1491,7 +1551,6 @@ export default function InteractiveGanttChart({
                                                             onClick={() => handleTaskClick(item)}
                                                             className={`min-w-0 flex-1 text-sm font-medium truncate ${item.type === "task" && item.taskId ? "cursor-pointer hover:underline" : ""}`}
                                                         >
-                                                            {item.name}
                                                             {(item.type === "milestone" || item.type === "group" ) && (
                                             <button
                                                 onClick={() => {
@@ -1505,13 +1564,15 @@ export default function InteractiveGanttChart({
                                                     sidebarCollapsed ? "h-5 w-5" : "h-4 w-4"
                                                 }`}
                                             >
-                                                {item.collapsed ? (
-                                                    <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                                                ) : (
-                                                    <ChevronDown className="h-3 w-3 text-muted-foreground" />
-                                                )}
+                                                <ChevronRight
+                                                    className={`h-3 w-3 text-muted-foreground transition-transform duration-200 ${
+                                                        item.collapsed ? "rotate-0" : "rotate-90"
+                                                    }`}
+                                                />
                                             </button>
                                         )}
+                                                            {item.name}
+                                                            
                                                         </span>
                                                         <span
                                                             className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
@@ -1573,7 +1634,7 @@ export default function InteractiveGanttChart({
                                     )}
 
                                     {/* Task, Group, or Milestone bar */}
-                                    {(item.type === "task" || item.type === "group" || item.type === "milestone" || item.type === "subtask") && (
+                                    {(item.type === "task" || item.type === "group" || item.type === "milestone" ) && (
                                         <Tooltip>
                                             <TooltipTrigger asChild>
                                                 <div
@@ -1647,33 +1708,18 @@ export default function InteractiveGanttChart({
                                                                 </span>
                                                             )}
                                                         </div>
-                                                    ) : item.type === "milestone" ? (
-                                                        <div className="relative h-4 w-4 rotate-45 border-2 shadow-sm bg-amber-300 border-amber-400 cursor-grab active:cursor-grabbing">
+                                                    ) : (
+                                                        <div
+                                                            className="absolute h-4 w-4 rotate-45 border-2 shadow-sm bg-amber-300 border-amber-400"
+                                                            style={{ left: -8, top: 0 }}
+                                                        >
                                                             {item.progress === 100 && (
                                                                 <div className="absolute inset-0 flex items-center justify-center">
                                                                     <div className="h-1.5 w-1.5 rotate-45 bg-amber-700" />
                                                                 </div>
                                                             )}
                                                         </div>
-                                                    ) : (
-                                                        /* SUBTASK bar */
-                                                        <div className="relative h-3.5 rounded-sm bg-emerald-500/80 shadow-sm">
-                                                            <div className="absolute inset-y-0 left-0 bg-emerald-700/30 pointer-events-none"
-                                                                style={{ width: `${item.progress}%` }} />
-                                                            {layout.barWidth > 30 && (
-                                                                <span className="relative z-10 flex items-center h-full px-1.5 text-[10px] font-medium text-white truncate pointer-events-none">
-                                                                    {item.name}
-                                                                </span>
-                                                            )}
-                                                            {/* Resize handles */}
-                                                            <div
-                                                                className="absolute left-1 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-1-md z-30 "
-                                                                onMouseDown={(e) => handleDragStart(e, item, "resize-start")} />
-                                                            <div
-                                                                className="absolute left-1 top-0 bottom-0 w-2.5 cursor-ew-resize hover:bg-white/40 rounded-1-md z-30 "
-                                                                onMouseDown={(e) => handleDragStart(e, item, "resize-end")} />
-                                                        </div>
-                                                    )}
+                                                  )}
                                                 </div>
                                             </TooltipTrigger>
                                             <TooltipContent side="top" align="center" className="z-50 max-w-[200px]">
@@ -1684,7 +1730,13 @@ export default function InteractiveGanttChart({
                                                     )}
                                                     <div className="flex items-center gap-2 text-muted-foreground">
                                                         <span className="inline-block h-2 w-2 rounded-full bg-indigo-500" />
-                                                        <span>{formatDateRange(layout.start, layout.end)}</span>
+                                                        <span>
+                                                            {item.type === "milestone" && item.plannedStart
+                                                                ? (differenceInDays(item.end, item.plannedStart) > 0
+                                                                    ? formatDateRange(item.plannedStart, layout.end)
+                                                                    : formatDateShort(layout.end))
+                                                                : formatDateRange(layout.start, layout.end)}
+                                                        </span>
                                                     </div>
                                                     <p className="text-muted-foreground">Progress: {item.progress}%</p>
                                                 </div>
@@ -1694,17 +1746,65 @@ export default function InteractiveGanttChart({
                                 </div>
                             </React.Fragment>
                         );
-                    })}
+                        };
+
+                        const timelineCols = {
+                            gridTemplateColumns: `${effectiveNameWidth}px ${totalUnits * UNIT_WIDTH}px`,
+                        };
+
+                        // Animated collapse wrapper: children stay mounted, the
+                        // row height animates via grid-template-rows 0fr -> 1fr.
+                        // overflow:clip (not hidden) keeps sticky sidebar cells
+                        // attached to the outer scroll container.
+                        const Collapse = ({ collapsed, children }: { collapsed?: boolean; children: React.ReactNode }) => (
+                            <div
+                                className="grid transition-[grid-template-rows] duration-300 ease-in-out"
+                                style={{ gridTemplateRows: collapsed ? "0fr" : "1fr", gridColumn: "1 / -1" }}
+                            >
+                                <div className="min-h-0" style={{ overflow: "clip" }}>
+                                    <div className="grid" style={timelineCols}>
+                                        {children}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+
+                        return itemsTree.map((milestone) => {
+                            const groups = milestone.children;
+                            return (
+                                <React.Fragment key={`top-${milestone.id}`}>
+                                    {renderRow(milestone)}
+                                    {groups.length > 0 && (
+                                        <Collapse collapsed={milestone.collapsed}>
+                                            {groups.map((group) => {
+                                                const tasks = group.children;
+                                                return (
+                                                    <React.Fragment key={group.id}>
+                                                        {renderRow(group)}
+                                                        {tasks.length > 0 && (
+                                                            <Collapse collapsed={group.collapsed}>
+                                                                {tasks.map((task) => renderRow(task))}
+                                                            </Collapse>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })}
+                                        </Collapse>
+                                    )}
+                                </React.Fragment>
+                            );
+                        });
+                    })()}
 
                     {/* ── Dependency arrows overlay ── */}
                     {showDependencies && dependencies.length > 0 && (
                         <div
-                            className="absolute pointer-events-none z-40 overflow-hidden"
+                            className="absolute pointer-events-none z-30 overflow-hidden"
                             style={{
                                 left: effectiveNameWidth,
                                 width: totalUnits * UNIT_WIDTH,
                                 height: items.length * ROW_HEIGHT,
-                                top: viewMode === "day" ? 58 : 42,
+                                top: toolbarHeight,
                             }}
                         >
                             <svg

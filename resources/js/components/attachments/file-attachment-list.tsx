@@ -1,6 +1,7 @@
 import { router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Download, Trash2, FileText, ImageIcon, FileArchive, FileSpreadsheet, File as FileIcon } from 'lucide-react';
+import { confirmRequest } from '../confirm-dialog';
 
 interface AttachmentData {
     id: number;
@@ -36,8 +37,14 @@ function getFileIcon(mimeType: string) {
 export default function FileAttachmentList({ attachments, authUserId, canDelete = true }: FileAttachmentListProps) {
     if (attachments.length === 0) return null;
 
-    function handleDelete(id: number) {
-        if (confirm('Are you sure you want to delete this file?')) {
+    async function handleDelete(id: number) {
+        const ok = await confirmRequest({
+            title: 'Delete this file?',
+            description: 'The attachment will be permanently removed. This action cannot be undone.',
+            confirmLabel: 'Delete file',
+        });
+
+        if (ok) {
             router.delete(`/attachments/${id}`, { preserveScroll: true });
         }
     }

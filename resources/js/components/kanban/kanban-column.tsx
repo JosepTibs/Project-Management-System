@@ -44,7 +44,7 @@ export default function KanbanColumn({
     const color = getStatusColor(column.status);
 
     return (
-        <div className="w-80 min-w-[320px] flex flex-col bg-muted/30 rounded-lg">
+        <div className="flex-1 min-w-[280px] flex flex-col bg-muted/30 rounded-lg">
             {/* Column Header */}
             <div className="flex items-center justify-between px-3 py-3 border-b border-border">
                 <div className="flex items-center gap-2">

@@ -1,8 +1,7 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import BackButton from '@/components/navigation/back-button';
 import { useState } from 'react';
 import KanbanBoard from '@/components/kanban/kanban-board';
 import InteractiveGanttChart from '@/components/interactive-gantt-chart';
@@ -74,12 +73,7 @@ export default function Kanban() {
             
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
-                    <Link href={`/projects/${project.id}`}>
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <BackButton defaultUrl={`/projects/${project.id}`} />
                     <h1 className="text-2xl font-bold">{project.name}</h1>
                     <div className="ml-auto flex items-center gap-2">
                         <ViewSelector 

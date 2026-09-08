@@ -41,6 +41,13 @@ class EventServiceProvider extends ServiceProvider
         CommentAddedEvent::class => [
             SendCommentAddedNotification::class,
         ],
+        /**
+         * Dispatched when a work item is completed.
+         * Listener notifies the project manager and relevant users.
+         */
+        WorkItemCompletedEvent::class => [
+            SendWorkItemCompletedNotification::class,
+        ],
     ];
 
     public function boot(): void

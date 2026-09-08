@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ArrowLeft } from 'lucide-react';
+import BackButton from '@/components/navigation/back-button';
 import { FormEvent, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -85,10 +86,7 @@ export default function EditUser() {
             <Head title="Edit User" />
             <div className="flex h-full flex-1 flex-col items-center gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
-                   <Button  variant="outline"  size="sm" onClick={() => window.history.back()} >
-                         <ArrowLeft className="mr-2 h-4 w-4" />
-                         Back
-                     </Button>
+                   <BackButton defaultUrl="/users" />
                     <h1 className="text-2xl font-bold">Edit User</h1>
                 </div>
 

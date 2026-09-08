@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { ArrowLeft, ChevronDown, ChevronRight, Plus, ExternalLink } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, ExternalLink } from 'lucide-react';
+import BackButton from '@/components/navigation/back-button';
 import { useState } from 'react';
 
 interface Status {
@@ -71,12 +72,7 @@ export default function GroupsIndex() {
             <Head title={`${project.name} - Work Item Groups`} />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
-                    <Link href={`/projects/${project.id}`}>
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <BackButton defaultUrl={`/projects/${project.id}`} />
                     <h1 className="text-2xl font-bold">{project.name} — Work Item Groups</h1>
                     <div className="ml-auto">
                         <Link href={`/projects/${project.id}/work-items/create`}>

@@ -32,7 +32,7 @@ export default function Login({ status, canResetPassword }: LoginProps) {
     const [showPassword, setShowPassword] = useState(false);
 
     const inputClasses =
-        'border-[#131F42] bg-[#131F42] text-[#F4F6F9] placeholder:text-[#8C9A9E] focus:border-[#20E2CD] focus:ring-[#20E2CD] focus:ring-offset-0';
+        'border-auth-surface bg-auth-surface text-auth-foreground placeholder:text-auth-muted focus:border-auth-accent focus:ring-auth-accent focus:ring-offset-0';
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
@@ -45,10 +45,18 @@ export default function Login({ status, canResetPassword }: LoginProps) {
         <AuthLayout title="Log in to your account" description="Enter your email and password below to log in">
             <Head title="Log in" />
 
-            <form className="flex flex-col gap-6" onSubmit={submit}>
+            {status && (
+                <div
+                    aria-live="polite"
+                    className="mb-4 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-center text-sm font-medium text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300"
+                >
+                    {status}
+                </div>
+            )}
+            <form className="flex flex-col gap-6" onSubmit={submit}>
                 <div className="grid gap-6">
                     <div className="grid gap-2">
-                        <Label htmlFor="email" className="text-[#F4F6F9]">
+                        <Label htmlFor="email" className="text-auth-foreground">
                             Email address
                         </Label>
                         <Input
@@ -68,9 +76,9 @@ export default function Login({ status, canResetPassword }: LoginProps) {
 
                     <div className="grid gap-2">
                         <div className="flex items-center">
-                            <Label htmlFor="password" className="text-[#F4F6F9]">Password</Label>
+                            <Label htmlFor="password" className="text-auth-foreground">Password</Label>
                             {canResetPassword && (
-                                <TextLink href={route('password.request')} className="ml-auto text-sm text-[#20E2CD]" tabIndex={5}>
+                                <TextLink href={route('password.request')} className="ml-auto text-sm text-auth-accent" tabIndex={5}>
                                     Forgot password?
                                 </TextLink>
                             )}
@@ -91,7 +99,7 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                             <button
                                 type="button"
                                 onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8C9A9E] hover:text-[#F4F6F9]"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-auth-muted hover:text-auth-foreground"
                                 aria-label={showPassword ? 'Hide password' : 'Show password'}
                             >
                                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
@@ -102,7 +110,7 @@ export default function Login({ status, canResetPassword }: LoginProps) {
 
                     <div className="flex items-center gap-3">
                         <Checkbox id="remember" name="remember" tabIndex={3} />
-                        <Label htmlFor="remember" className="text-[#F4F6F9]">
+                        <Label htmlFor="remember" className="text-auth-foreground">
                             Remember me
                         </Label>
                     </div>
@@ -113,15 +121,13 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                     </Button>
                 </div>
 
-                <div className="text-center text-sm text-[#8C9A9E]">
+                <div className="text-center text-sm text-auth-muted">
                     Don't have an account?{' '}
-                    <TextLink href={route('register')} tabIndex={5} className="text-[#20E2CD]">
+                    <TextLink href={route('register')} tabIndex={5} className="text-auth-accent">
                         Sign up
                     </TextLink>
                 </div>
             </form>
-
-            {status && <div className="mb-4 text-center text-sm font-medium text-green-600">{status}</div>}
         </AuthLayout>
     );
 }

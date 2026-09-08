@@ -45,8 +45,10 @@ class ProjectSetupController extends Controller
                 'status_name' => $project->status?->name,
             ],
             'statuses' => $project->statuses->sortBy('order')->values()->map(fn ($s) => [
+                'id' => $s->id,
                 'name' => $s->name,
                 'color' => $s->color,
+                'order' => $s->order,
             ]),
             'allUsers' => $allUsers->map(fn ($u) => [
                 'id' => $u->id,
@@ -54,7 +56,8 @@ class ProjectSetupController extends Controller
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? 'No Role',
             ]),
-            'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
+            
+            'workItemStatuses' => work_item_statuses::where('project_id', $project->id)->orderBy('order')->get()->unique('name')->values()->map(fn ($s) => [
                 'id' => $s->id,
                 'name' => $s->name,
             ]),
@@ -168,8 +171,10 @@ class ProjectSetupController extends Controller
                 'status_name' => $project->status?->name,
             ],
             'statuses' => $project->statuses->sortBy('order')->values()->map(fn ($s) => [
+                'id' => $s->id,
                 'name' => $s->name,
                 'color' => $s->color,
+                'order' => $s->order,
             ]),
             'allUsers' => $allUsers->map(fn ($u) => [
                 'id' => $u->id,
@@ -177,7 +182,7 @@ class ProjectSetupController extends Controller
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? 'No Role',
             ]),
-            'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
+            'workItemStatuses' => work_item_statuses::where('project_id', $project->id)->orderBy('order')->get()->unique('name')->values()->map(fn ($s) => [
                 'id' => $s->id,
                 'name' => $s->name,
             ]),
@@ -234,6 +239,11 @@ class ProjectSetupController extends Controller
         'start_date' => 'nullable|date',
         'end_date' => 'nullable|date|after_or_equal:start_date',
         'status_name' => 'nullable|string',
+        'statuses' => 'nullable|array',
+        'statuses.*.id' => 'nullable|integer',
+        'statuses.*.name' => 'required|string|max:255',
+        'statuses.*.color' => 'nullable|string|max:64',
+        'statuses.*.order' => 'nullable|integer',
         // Members
         'member_ids' => 'nullable|array',
         'member_ids.*' => 'exists:users,id',
@@ -345,8 +355,53 @@ class ProjectSetupController extends Controller
         $project->update($projectData);
     }
 
-    // Update project lifecycle status
-    if (! empty($data['status_name'])) {
+    // Sync lifecycle statuses (create / update / delete / reorder)
+    if (isset($data['statuses'])) {
+        // If we have a full submitted list, reconcile the status rows with it.
+        $submittedStatusIds = collect($data['statuses'])->pluck('id')
+            ->filter(fn ($id) => $id > 0)->toArray();
+
+        // If the currently active status is being removed, clear it first so
+        // the FK on projects.status_id never points at a deleted row.
+        if ($project->status_id && ! in_array($project->status_id, $submittedStatusIds)) {
+            $project->update(['status_id' => null]);
+        }
+
+        $project->statuses()->whereNotIn('id', $submittedStatusIds)->delete();
+
+        foreach (array_values($data['statuses']) as $i => $statusData) {
+            if (empty($statusData['name'])) {
+                continue;
+            }
+
+            $row = [
+                'name' => $statusData['name'],
+                'color' => $statusData['color'] ?? null,
+                'order' => ($statusData['order'] ?? ($i + 1)),
+                'is_initial' => $i === 0,
+            ];
+
+            if (isset($statusData['id']) && $statusData['id'] > 0) {
+                $project->statuses()->where('id', $statusData['id'])->update($row);
+            } else {
+                $project->statuses()->create($row);
+            }
+        }
+
+        // Re-assign the project's lifecycle status.
+        if (! empty($data['status_name'])) {
+            $status = $project->statuses()->where('name', $data['status_name'])->first();
+            if ($status) {
+                $project->update(['status_id' => $status->id]);
+            } elseif ($project->status_id === null) {
+                $first = $project->statuses()->orderBy('order')->first();
+                $project->update(['status_id' => $first?->id]);
+            }
+        } elseif ($project->status_id === null) {
+            $first = $project->statuses()->orderBy('order')->first();
+            $project->update(['status_id' => $first?->id]);
+        }
+    } elseif (! empty($data['status_name'])) {
         $status = $project->statuses()->where('name', $data['status_name'])->first();
         if ($status && $project->status_id !== $status->id) {
             $project->update(['status_id' => $status->id]);
@@ -453,13 +508,7 @@ class ProjectSetupController extends Controller
 
                 // Auto-derive group progress from its work items when it has
                 // any; otherwise keep the manually entered value.
-                $groupModel->refreshRelation('workItems');
-                if ($groupModel->workItems()->count() > 0) {
-                    $derived = (int) round($groupModel->workItems()->avg('progress') ?? 0);
-                    if ($groupModel->progress !== $derived) {
-                        $groupModel->update(['progress' => $derived]);
-                    }
-                }
+               
             }
         }
     }

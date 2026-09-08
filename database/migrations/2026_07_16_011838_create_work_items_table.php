@@ -17,7 +17,7 @@ return new class extends Migration
             $table->unsignedBigInteger('status_id');
             $table->unsignedBigInteger('group_id');
             $table->string('title');
-            $table->text('description');
+            $table->text('description')->nullable();
             $table->unsignedBigInteger('assignee_id');
             $table->enum('priority',['low','medium','high','critical']);
             

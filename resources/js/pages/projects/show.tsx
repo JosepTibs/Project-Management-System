@@ -2,7 +2,8 @@ import FileAttachmentList from '@/components/attachments/file-attachment-list';
 import CalendarView from '@/components/calendar-view';
 import InteractiveGanttChart from '@/components/interactive-gantt-chart';
 import KanbanBoard from '@/components/kanban/kanban-board';
-import ProjectSetupSheet from '@/components/projects/project-setup-sheet';
+import ProjectSetupSheet from '@/components/projects/setup/project-setup-sheet-refactored';
+import BackButton from '@/components/navigation/back-button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,20 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Head, Link, usePage } from '@inertiajs/react';
-import {
-    ArrowLeft,
-    BarChart3,
-    Calendar,
-    ChevronDown,
-    ChevronUp,
-    Columns3,
-    FileSpreadsheet,
-    FileText,
-    Paperclip,
-    Settings,
-    Target,
-    Users,
-} from 'lucide-react';
+import { BarChart3, Calendar, ChevronDown, ChevronUp, Columns3, FileSpreadsheet, FileText, Paperclip, Settings, Target, Users} from 'lucide-react';
 import { useState } from 'react';
 
 function getPriorityVariant(priority: string) {
@@ -64,7 +52,10 @@ export default function ShowProject() {
         } else {
             url.searchParams.set('tab', value);
         }
-        window.history.replaceState({}, '', url.toString());
+        // Preserve Inertia's stored history state (component/url/version) —
+        // replacing it with {} desyncs Inertia's history model and breaks
+        // back navigation after a refresh.
+        window.history.replaceState(window.history.state ?? {}, '', url.toString());
     };
 
     // Role tiers: admins manage every project; managers only projects they
@@ -94,7 +85,8 @@ export default function ShowProject() {
         } else {
             url.searchParams.set('scope', next);
         }
-        window.history.replaceState({}, '', url.toString());
+        // Preserve Inertia's stored history state (see handleTabChange).
+        window.history.replaceState(window.history.state ?? {}, '', url.toString());
     };
     // Explicit collapse state for overview sections (true = expanded/open).
     const [openGroups, setOpenGroups] = useState<Record<number, boolean>>({});
@@ -198,7 +190,7 @@ export default function ShowProject() {
                                 {groupItems.map((item: any) => (
                                     <TableRow key={item.id}>
                                         <TableCell className="text-sm font-medium">
-                                            <Link href={`/projects/${project.id}/work-items/${item.id}`} className="hover:underline">
+                                            <Link href={`/projects/${project.id}/work-items/${item.id}?from=project`} className="hover:underline">
                                                 {item.title}
                                             </Link>
                                         </TableCell>
@@ -240,55 +232,7 @@ export default function ShowProject() {
         );
     };
 
-    // Table of work items not attached to any group (milestone-level
-    // "ungrouped" items). Reuses the same row markup as group tables.
-    const renderUngroupedItemsTable = (items: any[]) => {
-        if (items.length === 0) return null;
-        return (
-            <Table>
-                <TableHeader>
-                    <TableRow className="bg-muted/20 hover:bg-muted/20">
-                        <TableHead>Title</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Assignee</TableHead>
-                        <TableHead>Progress</TableHead>
-                        <TableHead className="text-right">Due Date</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {items.map((item: any) => (
-                        <TableRow key={item.id}>
-                            <TableCell className="text-sm font-medium">
-                                <Link href={`/projects/${project.id}/work-items/${item.id}`} className="hover:underline">
-                                    {item.title}
-                                </Link>
-                            </TableCell>
-                            <TableCell>
-                                <Badge variant={getPriorityVariant(item.priority)} className="text-[10px] capitalize">
-                                    {item.priority}
-                                </Badge>
-                            </TableCell>
-                            <TableCell>
-                                <Badge className="text-[10px] capitalize">{item.assignee?.name ? item.assignee.name : 'Unassigned'}</Badge>
-                            </TableCell>
-                            <TableCell>
-                                <div className="flex items-center gap-2">
-                                    <div className="bg-secondary h-1.5 w-16 overflow-hidden rounded-full">
-                                        <div
-                                            className="bg-primary h-1.5 rounded-full transition-all"
-                                            style={{ width: `${Math.min(100, item.progress ?? 0)}%` }}
-                                        />
-                                    </div>
-                                    <span className="text-muted-foreground text-[10px] tabular-nums">{Math.min(100, item.progress ?? 0)}%</span>
-                                </div>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-right text-xs">{item.due_date || '—'}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        );
-    };
+   
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -298,9 +242,14 @@ export default function ShowProject() {
                 {/* Header Section */}
                 <div className="flex flex-col gap-4 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
-                        <Button variant="ghost" size="icon" onClick={() => window.history.back()} className="h-8 w-8">
-                            <ArrowLeft className="h-4 w-4" />
-                        </Button>
+                        <BackButton
+                            defaultUrl="/projects"
+                            label=""
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="Back to projects"
+                        />
                         <div>
                             <div className="flex items-center gap-2">
                                 <span className="bg-muted text-muted-foreground rounded px-2 py-0.5 font-mono text-xs uppercase">
@@ -467,17 +416,10 @@ export default function ShowProject() {
                                                                     <div className="border-primary/40 bg-primary/[0.025] rounded-md border border-dashed">
                                                                         <div className="flex items-center gap-2 px-3 py-2">
                                                                             <FileText className="text-primary h-3.5 w-3.5" />
-                                                                            <span className="text-xs font-medium">Ungrouped tasks</span>
-                                                                            <Badge
-                                                                                variant="outline"
-                                                                                className="border-primary/40 text-primary h-4 px-1.5 text-[10px]"
-                                                                            >
-                                                                                {milestoneUngroupedItems.length}
-                                                                            </Badge>
+                                                                           
+                                                                            
                                                                         </div>
-                                                                        <div className="border-t">
-                                                                            {renderUngroupedItemsTable(milestoneUngroupedItems)}
-                                                                        </div>
+                                                                       
                                                                     </div>
                                                                 )}
                                                             </>
@@ -515,9 +457,7 @@ export default function ShowProject() {
                                                 <h4 className="text-muted-foreground flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
                                                     <FileText className="h-3 w-3" /> Tasks without Milestone ({looseItems.length})
                                                 </h4>
-                                                <div className="border-primary/40 bg-primary/[0.025] rounded-md border border-dashed">
-                                                    <div className="border-t">{renderUngroupedItemsTable(looseItems)}</div>
-                                                </div>
+                                                
                                             </div>
                                         );
                                     })()}
@@ -642,7 +582,7 @@ export default function ShowProject() {
                                             <CardTitle className="flex items-center gap-2 text-base">
                                                 <FileText className="h-4 w-4" />
                                                 <Link
-                                                    href={`/projects/${project.id}/work-items/${group.workItemId}`}
+                                                    href={`/projects/${project.id}/work-items/${group.workItemId}?from=project`}
                                                     className="text-primary hover:underline"
                                                 >
                                                     {group.workItemTitle || `Work Item #${group.workItemId}`}
@@ -677,6 +617,7 @@ export default function ShowProject() {
                         open={editOpen}
                         onOpenChange={setEditOpen}
                         mode="edit"
+                        projectId={project.id}
                         project={{
                             name: project.name,
                             description: project.description,

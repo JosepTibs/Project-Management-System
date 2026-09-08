@@ -117,9 +117,12 @@ class UserController extends Controller
                 'sname'=> $user->sname,
                 'email' => $user->email,
                 'role' => $user->roles->first()?->only(['id', 'name']),
+                'role_id' => $user->roles->first()?->id,
                 'created_at' => $user->created_at->format('Y-m-d'),
                 'projects' => $projects,
             ],
+            // Roles available to the edit sheet (same rules as the edit page).
+            'roles' => $this->assignableRoles(),
         ]);
     }
 

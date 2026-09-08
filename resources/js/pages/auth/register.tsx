@@ -35,7 +35,7 @@ export default function Register() {
     };
 
     const inputClasses =
-        'border-[#131F42] bg-[#131F42] text-[#F4F6F9] placeholder:text-[#8C9A9E] focus:border-[#20E2CD] focus:ring-[#20E2CD] focus:ring-offset-0';
+        'border-auth-surface bg-auth-surface text-auth-foreground placeholder:text-auth-muted focus:border-auth-accent focus:ring-auth-accent focus:ring-offset-0';
 
     return (
         <AuthLayout title="Create an account" description="Enter your details below to create your account">
@@ -43,7 +43,7 @@ export default function Register() {
             <form className="mt-2 flex flex-col gap-4" onSubmit={submit}>
                 <div className="grid gap-4">
                     <div className="grid gap-2">
-                        <Label htmlFor="username" className="text-[#F4F6F9]">
+                        <Label htmlFor="username" className="text-auth-foreground">
                             Username
                         </Label>
                         <Input
@@ -63,7 +63,7 @@ export default function Register() {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="name" className="text-[#F4F6F9]">
+                        <Label htmlFor="name" className="text-auth-foreground">
                             Full name
                         </Label>
                         <Input
@@ -82,7 +82,7 @@ export default function Register() {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="email" className="text-[#F4F6F9]">
+                        <Label htmlFor="email" className="text-auth-foreground">
                             Email address
                         </Label>
                         <Input
@@ -101,7 +101,7 @@ export default function Register() {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="password" className="text-[#F4F6F9]">
+                        <Label htmlFor="password" className="text-auth-foreground">
                             Password
                         </Label>
                         <Input
@@ -120,7 +120,7 @@ export default function Register() {
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="password_confirmation" className="text-[#F4F6F9]">
+                        <Label htmlFor="password_confirmation" className="text-auth-foreground">
                             Confirm password
                         </Label>
                         <Input
@@ -144,9 +144,9 @@ export default function Register() {
                     </Button>
                 </div>
 
-                <div className="text-center text-sm text-[#8C9A9E]">
+                <div className="text-center text-sm text-auth-muted">
                     Already have an account?{' '}
-                    <TextLink href={route('login')} tabIndex={7} className="text-[#20E2CD]">
+                    <TextLink href={route('login')} tabIndex={7} className="text-auth-accent">
                         Log in
                     </TextLink>
                 </div>

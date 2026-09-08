@@ -6,23 +6,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-    AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger} from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Calendar, User as UserIcon, Users, Layers, Paperclip, Pencil, Trash2 } from 'lucide-react';
+import { Calendar, User as UserIcon, Users, Layers, Paperclip, Pencil, Trash2 } from 'lucide-react';
+import BackButton from '@/components/navigation/back-button';
 import CommentSection from '@/components/comments/comment-section';
 import FileAttachmentUploader from '@/components/attachments/file-attachment-uploader';
 import FileAttachmentList from '@/components/attachments/file-attachment-list';
 import WorkItemSheet, { type EditWorkItemData, type Member, type WorkItemSheetOption } from '@/components/work-items/work-item-sheet';
+
 
 interface Status {
     id: number;
@@ -279,12 +271,7 @@ export default function WorkItemShow() {
             <div className="flex h-full flex-1 flex-col gap-4 p-4">
                 {/* Header: back nav, title, priority/status identity, actions */}
                 <div className="flex items-start gap-3">
-                    <Link href={backUrl}>
-                        <Button variant="outline" size="sm">
-                            <ArrowLeft className="mr-2 h-4 w-4" />
-                            Back
-                        </Button>
-                    </Link>
+                    <BackButton defaultUrl={`/projects/${workItem.project?.id}/work-items`} preferred={backUrl} />
 
                     <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">

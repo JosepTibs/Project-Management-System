@@ -5,6 +5,7 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createRoot } from 'react-dom/client';
 import { route as routeFn } from 'ziggy-js';
 import { initializeTheme } from './hooks/use-appearance';
+import { ConfirmDialogProvider } from '@/components/confirm-dialog';
 import { configureEcho } from '@laravel/echo-react';
 
 configureEcho({
@@ -30,7 +31,11 @@ createInertiaApp({
     setup({ el, App, props }) {
         const root = createRoot(el);
 
-        root.render(<App {...props} />);
+        root.render(
+            <ConfirmDialogProvider>
+                <App {...props} />
+            </ConfirmDialogProvider>,
+        );
     },
     progress: {
         color: '#4B5563',

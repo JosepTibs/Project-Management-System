@@ -5,7 +5,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, Sid
 import { type NavItem, type SharedData } from '@/types';
 import { isAdminLevel } from '@/lib/roles';
 import { Link, usePage } from '@inertiajs/react';
-import { FolderKanban, LayoutGrid, LogOut, Users, FileText, ActivityIcon } from 'lucide-react';
+import { FolderKanban, LayoutGrid, LogOut, Users, FileText, ActivityIcon, Bell, User2, BarChart3 } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: NavItem[] = [
@@ -13,6 +13,11 @@ const mainNavItems: NavItem[] = [
         title: 'Dashboard',
         url: '/dashboard',
         icon: LayoutGrid,
+    },
+    {
+        title: "Profile",
+        url: '/profile',
+        icon: User2,
     },
     {
         title: 'Projects',
@@ -36,9 +41,21 @@ const mainNavItems: NavItem[] = [
         icon: ActivityIcon,
         roles: ['superadmin', 'admin'],
     },
+    {
+        title: 'Daily Digest',
+        url: '/admin/digest',
+        icon: BarChart3,
+        roles: ['superadmin', 'admin', 'manager'],
+    },
 ];
 
 const footerNavItems: NavItem[] = [
+    {
+        title: 'Notifications',
+        url: '/notifications',
+        method: 'get',
+        icon: Bell,
+    },
     {
         title: 'Log Out',
         url: '/logout',

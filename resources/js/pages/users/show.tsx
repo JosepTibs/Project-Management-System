@@ -5,7 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { ArrowLeft, Edit, FolderOpen } from 'lucide-react';
+import { Edit, FolderOpen } from 'lucide-react';
+import BackButton from '@/components/navigation/back-button';
+import CreateUserSheet, { type SheetUserData } from '@/components/users/create-user-sheet';
+import { useState } from 'react';
 
 interface Role {
     id: number;
@@ -26,12 +29,14 @@ interface UserData {
     sname: string;
     email: string;
     role: Role | null;
+    role_id?: number | null;
     created_at: string;
     projects: Project[];
 }
 
 interface ShowUserPageProps extends Record<string, unknown> {
     user: UserData;
+    roles: Role[];
 }
 
 function formatFullName(user: UserData) {
@@ -40,8 +45,21 @@ function formatFullName(user: UserData) {
 }
 
 export default function ShowUser() {
-    const { user } = usePage<ShowUserPageProps>().props;
+    const { user, roles } = usePage<ShowUserPageProps>().props;
     const fullName = formatFullName(user);
+    const [editOpen, setEditOpen] = useState(false);
+
+    // Shape the user for the edit sheet (same contract as the edit page).
+    const sheetUser: SheetUserData = {
+        id: user.id,
+        username: user.username,
+        fname: user.fname,
+        mname: user.mname,
+        lname: user.lname,
+        sname: user.sname,
+        email: user.email,
+        role_id: user.role_id ?? user.role?.id ?? null,
+    };
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Users', href: '/users' },
@@ -53,20 +71,22 @@ export default function ShowUser() {
             <Head title={fullName} />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center gap-4">
-                    <Button  variant="outline"  size="sm" onClick={() => window.history.back()} >
-                         <ArrowLeft className="mr-2 h-4 w-4" />
-                         Back
-                     </Button>
+                    <BackButton defaultUrl="/users" />
                     <h1 className="text-2xl font-bold">{fullName}</h1>
                     <div className="ml-auto">
-                        <Link href={`/users/${user.id}/edit`}>
-                            <Button variant="outline" size="sm">
-                                <Edit className="mr-2 h-4 w-4" />
-                                Edit
-                            </Button>
-                        </Link>
+                        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit
+                        </Button>
                     </div>
                 </div>
+
+                <CreateUserSheet
+                    open={editOpen}
+                    onOpenChange={setEditOpen}
+                    roles={roles}
+                    user={sheetUser}
+                />
 
                 {/* User Info */}
                 <Card>

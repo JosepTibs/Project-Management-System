@@ -9,23 +9,32 @@ use Inertia\Inertia;
 
 class NotificationController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $notifications = auth()->user()->notifications()
-            ->orderBy('created_at', 'desc')
-            ->paginate(20);
+        $filter = $request->query('filter', 'all');
+
+        $query = auth()->user()->notifications()
+            ->orderBy('created_at', 'desc');
+
+        // Apply unread filter if requested
+        if ($filter === 'unread') {
+            $query->whereNull('read_at');
+        }
+
+        $notifications = $query->paginate(20);
+
+        $notifications->getCollection()->transform(function ($notification) {
+        $notification->is_unread = $notification->isUnread();
+        return $notification;
+    });
 
         return Inertia::render('notifications/index', [
             'notifications' => $notifications,
+            'filter' => $filter,
+            'unread_count' => auth()->user()->unreadNotifications()->count(),
         ]);
     }
 
-    public function getUnreadCount()
-    {
-        return response()->json([
-            'count' => auth()->user()->unreadNotifications()->count(),
-        ]);
-    }
 
     public function getRecent()
     {
@@ -67,6 +76,13 @@ class NotificationController extends Controller
         auth()->user()->unreadNotifications->markAsRead();
 
         return response()->json(['success' => true]);
+    }
+
+    public function getUnreadCount()
+    {
+        return response()->json([
+            'count' => auth()->user()->unreadNotifications()->count(),
+        ]);
     }
 
     public function getSettings()

@@ -91,7 +91,7 @@ class ProjectsController extends Controller
             'archived' => ($archived === '1' || $archived === 'true') ? true : false,
             'statuses' => self::defaultProjectStatuses(),
             'allUsers' => $this->allUsers(),
-            'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
+            'workItemStatuses' => work_item_statuses::orderBy('order')->get()->unique('name')->values()->map(fn ($s) => [
                 'id' => $s->id,
                 'name' => $s->name,
             ]),
@@ -132,9 +132,15 @@ class ProjectsController extends Controller
         'item_prefix' => 'required|string|max:255',
         'start_date' => 'nullable|date',
         'end_date' => 'nullable|date|after_or_equal:start_date',
-        'status_name' => 'nullable|string|in:'.implode(',', array_column(self::defaultProjectStatuses(), 'name')),
+        'status_name' => 'nullable|string|max:255',
+        'statuses' => 'nullable|array',
+        'statuses.*.name' => 'required|string|max:255',
+        'statuses.*.color' => 'nullable|string|max:64',
         'member_ids' => 'nullable|array',
         'member_ids.*' => 'exists:users,id',
+        // When an admin creates a project they may delegate ownership to the
+        // first selected manager. Ignored for non-admins (they always own it).
+        'created_by' => 'nullable|exists:users,id',
         'milestones' => 'nullable|array',
         'milestones.*.name' => 'nullable|string|max:255',
         'milestones.*.description' => 'nullable|string',
@@ -166,7 +172,14 @@ class ProjectsController extends Controller
         'milestones.*.work_items.*.status_id' => 'nullable|exists:work_item_statuses,id',
     ]);
 
-    $validated['created_by'] = auth()->id();
+    // Ownership: admins may delegate to a chosen manager (created_by must be
+    // one of the submitted members); everyone else owns the project they make.
+    $members = $validated['member_ids'] ?? [];
+    $requestedOwner = $validated['created_by'] ?? null;
+    $validated['created_by'] =
+        ($requestedOwner && auth()->user()?->isAdminLevel() && in_array($requestedOwner, $members))
+            ? $requestedOwner
+            : auth()->id();
 
     $projectStart = isset($validated['start_date']) && $validated['start_date']
         ? Carbon::parse($validated['start_date'])
@@ -240,6 +253,23 @@ class ProjectsController extends Controller
         'end_date',
         'created_by',
     ]));
+
+    // Persist the lifecycle statuses submitted in the setup sheet.
+    // New projects seeded through the UI have no status rows yet, so we
+    // create them here (Create flow). The first status is the "initial" one.
+    if (!empty($validated['statuses']) && is_array($validated['statuses'])) {
+        foreach (array_values($validated['statuses']) as $i => $statusData) {
+            if (empty($statusData['name'])) {
+                continue;
+            }
+            $project->statuses()->create([
+                'name' => $statusData['name'],
+                'color' => $statusData['color'] ?? null,
+                'order' => $i + 1,
+                'is_initial' => $i === 0,
+            ]);
+        }
+    }
 
     if (!empty($validated['status_name'])) {
         $status = $project->statuses()->where('name', $validated['status_name'])->first();
@@ -439,12 +469,7 @@ class ProjectsController extends Controller
 
         $project->load(['creator', 'members.user', 'workItems.attachments.uploader', 'milestones', 'workItemGroups.workItems', 'workItemGroups.assignees', 'status', 'statuses']);
 
-        $ungroupedByMilestone = work_item::query()
-            ->where('project_id', $project->id)
-            ->whereNull('group_id')
-            ->whereNotNull('milestone_id')
-            ->get()
-            ->groupBy('milestone_id');
+      
 
         $user = auth()->user();
 
@@ -454,9 +479,18 @@ class ProjectsController extends Controller
             ->with(['status', 'assignee', 'group', 'collaborators'])
             ->get();
 
+        // If no project-specific statuses exist, use default statuses
         $statuses = work_item_statuses::where('project_id', $project->id)
+            ->distinct()
             ->orderBy('order')
             ->get(['id', 'name', 'color']);
+
+        if ($statuses->isEmpty()) {
+            $statuses = work_item_statuses::where('is_default', true)
+                ->orderBy('order')
+                ->get(['id', 'name', 'color']);
+        }
+
 
         // Fetch all attachments across project work items for the Documents tab
         // Include work_item_id and work_item_title for grouped display
@@ -616,10 +650,12 @@ class ProjectsController extends Controller
             'setup' => [
                 'allUsers' => $this->allUsers(),
                 'statuses' => $project->statuses->sortBy('order')->values()->map(fn ($s) => [
+                    'id' => $s->id,
                     'name' => $s->name,
                     'color' => $s->color,
+                    'order' => $s->order,
                 ]),
-                'workItemStatuses' => work_item_statuses::select('id', 'name')->orderBy('id')->get()->map(fn ($s) => [
+                'workItemStatuses' => work_item_statuses::where('project_id', $project->id)->orderBy('order')->get()->unique('name')->values()->map(fn ($s) => [
                     'id' => $s->id,
                     'name' => $s->name,
                 ]),
@@ -652,18 +688,7 @@ class ProjectsController extends Controller
                                 ])->values(),
                             ];
                         })->values(),
-                        'work_items' => ($ungroupedByMilestone[$m->id] ?? collect())->map(function ($w) {
-                            return [
-                                'id' => $w->id,
-                                'title' => $w->title,
-                                'description' => $w->description,
-                                'priority' => $w->priority,
-                                'start_date' => $w->start_date?->format('Y-m-d'),
-                                'due_date' => $w->due_date?->format('Y-m-d'),
-                                'assignee_id' => $w->assignee_id,
-                                'status_id' => $w->status_id,
-                            ];
-                        })->values(),
+                        
                     ];
                 }),
             ],
@@ -760,6 +785,13 @@ class ProjectsController extends Controller
         $statuses = work_item_statuses::where('project_id', $project->id)
             ->orderBy('order')
             ->get(['id', 'name', 'color']);
+
+        // If no project-specific statuses exist, use default statuses
+       if ($statuses->isEmpty()) {
+    $statuses = work_item_statuses::where('is_default', true)
+        ->orderBy('order')
+        ->get(['id', 'name', 'color']);
+}
 
         // Ensure all statuses appear as columns even if empty
         $columns = collect($statuses)->map(function ($status) use ($workItems) {

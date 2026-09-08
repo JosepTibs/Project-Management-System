@@ -1,16 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import {
-    DndContext,
-    DragOverlay,
-    closestCorners,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    type DragStartEvent,
-    type DragEndEvent,
-    type DragOverEvent,
-} from '@dnd-kit/core';
+import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragStartEvent, type DragEndEvent, type DragOverEvent} from '@dnd-kit/core';
 import { sortableKeyboardCoordinates, arrayMove } from '@dnd-kit/sortable';
 import { router } from '@inertiajs/react';
 import KanbanColumn from '@/components/kanban/kanban-column';
@@ -301,19 +290,26 @@ export default function KanbanBoard({
                 onDragEnd={handleDragEnd}
             >
                 <div
-                    className="flex gap-4 overflow-x-auto pb-4 h-full"
+                    className="flex gap-4 pb-4 h-full"
                     onPointerDownCapture={handlePointerDownCapture}
                     onPointerMoveCapture={handlePointerMoveCapture}
                     onKeyDownCapture={handleKeyDownCapture}
                 >
-                    {columns.map((column) => (
-                        <KanbanColumn
-                            key={column.status}
-                            column={column}
-                            id={column.status}
-                            isCardDisabled={(card) => !canDragCard(card)}
-                        />
-                    ))}
+                    {statuses.map((status) => {
+                        const columnData = columns.find((col) => col.status === status.name);
+                        const column: KanbanColumnData = columnData ?? {
+                            status: status.name,
+                            items: [],
+                        };
+                        return (
+                            <KanbanColumn
+                                key={column.status}
+                                column={column}
+                                id={column.status}
+                                isCardDisabled={(card) => !canDragCard(card)}
+                            />
+                        );
+                    })}
                 </div>
 
                 <DragOverlay>

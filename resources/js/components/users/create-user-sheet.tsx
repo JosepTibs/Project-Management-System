@@ -8,39 +8,64 @@ import { type FormEvent, useState } from 'react';
 
 interface Role { id: number; name: string }
 
+export interface SheetUserData {
+    id: number;
+    username: string;
+    fname: string;
+    mname: string;
+    lname: string;
+    sname: string;
+    email: string;
+    role_id: number | null;
+}
+
 interface CreateUserSheetProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     roles: Role[];
+    /** When provided, the sheet edits this user instead of creating a new one. */
+    user?: SheetUserData | null;
 }
 
-export default function CreateUserSheet({ open, onOpenChange, roles }: CreateUserSheetProps) {
-    const [username, setUserName] = useState('');
-    const [fname, setFirstName] = useState('');
-    const [mname, setMiddleName] = useState('');
-    const [lname, setLastName] = useState('');
-    const [sname, setSuffixName] = useState('');
-    const [email, setEmail] = useState('');
+export default function CreateUserSheet({ open, onOpenChange, roles, user }: CreateUserSheetProps) {
+    const editing = Boolean(user);
+    const [username, setUserName] = useState(user?.username ?? '');
+    const [fname, setFirstName] = useState(user?.fname ?? '');
+    const [mname, setMiddleName] = useState(user?.mname ?? '');
+    const [lname, setLastName] = useState(user?.lname ?? '');
+    const [sname, setSuffixName] = useState(user?.sname ?? '');
+    const [email, setEmail] = useState(user?.email ?? '');
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
-    const [roleId, setRoleId] = useState('');
+    const [roleId, setRoleId] = useState(user?.role_id ? String(user.role_id) : '');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
     function handleSubmit(e: FormEvent) {
         e.preventDefault();
         setProcessing(true);
-        router.post('/users', {
+
+        const payload = {
             username, fname, mname, lname, sname, email,
-            password, password_confirmation: passwordConfirmation, role_id: roleId,
-        }, {
-            onError: (errs) => { setErrors(errs); setProcessing(false); },
+            password: password || undefined,
+            password_confirmation: passwordConfirmation || undefined,
+            role_id: roleId,
+        };
+
+        const options = {
+            onError: (errs: Record<string, string>) => { setErrors(errs); setProcessing(false); },
             onSuccess: () => {
                 setProcessing(false);
                 setErrors({});
-                onOpenChange(false);   // stay on the list; the store redirect refreshes props
+                onOpenChange(false);   // stay on the page; the redirect refreshes props
             },
-        });
+        };
+
+        if (editing && user) {
+            router.put(`/users/${user.id}`, payload, options);
+        } else {
+            router.post('/users', payload, options);
+        }
     }
 
     // on close (X / escape), clear stale errors + reset the form
@@ -50,8 +75,10 @@ export default function CreateUserSheet({ open, onOpenChange, roles }: CreateUse
         <Sheet open={open} onOpenChange={handleOpenChange}>
             <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
                 <SheetHeader>
-                    <SheetTitle>Create User</SheetTitle>
-                    <SheetDescription>Fill in the user details below.</SheetDescription>
+                    <SheetTitle>{editing ? 'Edit User' : 'Create User'}</SheetTitle>
+                    <SheetDescription>
+                        {editing ? 'Update the user details below.' : 'Fill in the user details below.'}
+                    </SheetDescription>
                 </SheetHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -185,7 +212,9 @@ export default function CreateUserSheet({ open, onOpenChange, roles }: CreateUse
                     <SheetFooter className="mt-6 flex gap-3">
                         <Button variant="outline" type="button" onClick={() => handleOpenChange(false)}>Cancel</Button>
                         <Button type="submit" disabled={processing}>
-                            {processing ? 'Creating...' : 'Create User'}
+                            {processing
+                                ? (editing ? 'Saving…' : 'Creating...')
+                                : (editing ? 'Save Changes' : 'Create User')}
                         </Button>
                     </SheetFooter>
                 </form>

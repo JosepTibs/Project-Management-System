@@ -11,6 +11,8 @@ import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, 
 import { useState, useMemo, useCallback } from 'react';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, createColumnHelper, type SortingState, type FilterFn} from '@tanstack/react-table';
 import CreateUserSheet from '@/components/users/create-user-sheet';
+import { confirmRequest } from '@/components/confirm-dialog';
+
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Users',
@@ -278,8 +280,14 @@ export default function UsersIndex() {
         },
     });
 
-    function handleDelete(userId: number, userName: string) {
-        if (confirm(`Are you sure you want to delete "${userName}"? This action cannot be undone.`)) {
+    async function handleDelete(userId: number, userName: string) {
+        const ok = await confirmRequest({
+            title: `Delete "${userName}"?`,
+            description: 'This will permanently remove the user account and revoke their access. This action cannot be undone.',
+            confirmLabel: 'Delete user',
+        });
+
+        if (ok) {
             router.delete(`/users/${userId}`, { preserveScroll: true });
         }
     }

@@ -11,6 +11,7 @@ use App\Http\Controllers\ProjectsController;
 use App\Http\Controllers\ProjectSetupController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WorkItemController;
+use App\Http\Controllers\AdminDigestController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -90,6 +91,9 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/api/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::get('/api/notification-settings', [NotificationController::class, 'getSettings']);
     Route::put('/api/notification-settings', [NotificationController::class, 'updateSettings']);
+
+    // Admin Digest
+    Route::get('/admin/digest', [AdminDigestController::class, 'index'])->name('admin.digest');
 });
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';
