@@ -12,7 +12,10 @@ import AuthLayout from '@/layouts/auth-layout';
 interface RegisterForm {
     [key: string]: string;
     username: string;
-    name: string;
+    fname: string;
+    mname: string;
+    lname: string;
+    sname: string;
     email: string;
     password: string;
     password_confirmation: string;
@@ -21,7 +24,10 @@ interface RegisterForm {
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm<RegisterForm>({
         username: '',
-        name: '',
+        fname: '',
+        mname: '',
+        lname: '',
+        sname: '',
         email: '',
         password: '',
         password_confirmation: '',
@@ -62,23 +68,82 @@ export default function Register() {
                         <InputError message={errors.username} className="mt-2" />
                     </div>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="name" className="text-auth-foreground">
-                            Full name
+                    <div className="grid sm:grid-cols-2 gap-4">
+                        <div className='flex flex-col gap-1.5'>
+                        <Label htmlFor="fname" className="text-auth-foreground">
+                           First Name
                         </Label>
                         <Input
-                            id="name"
+                            id="fname"
+                            type="text"
+                            required
+                            tabIndex={2}
+                            autoComplete="fname"
+                            value={data.fname}
+                            onChange={(e) => setData('fname', e.target.value)}
+                            disabled={processing}
+                            placeholder="John"
+                            className={inputClasses}
+                        />
+                        <InputError message={errors.fname} />
+                        </div>
+                        
+                        <div className='flex flex-col gap-1.5'>
+                        <Label htmlFor="mname" className="text-auth-foreground">
+                           Middle Name
+                        </Label>
+                        <Input
+                            id="mname"
+                            type="text"
+                            
+                            tabIndex={2}
+                            autoComplete="mname"
+                            value={data.mname}
+                            onChange={(e) => setData('mname', e.target.value)}
+                            disabled={processing}
+                            placeholder="Dela"
+                            className={inputClasses}
+                        />
+                        <InputError message={errors.mname} />
+                        </div>
+
+                        <div className='flex flex-col gap-1.5'>
+                        <Label htmlFor="lname" className="text-auth-foreground">
+                           Last Name
+                        </Label>
+                        <Input
+                            id="lname"
                             type="text"
                             required
                             tabIndex={2}
                             autoComplete="name"
-                            value={data.name}
-                            onChange={(e) => setData('name', e.target.value)}
+                            value={data.lname}
+                            onChange={(e) => setData('lname', e.target.value)}
                             disabled={processing}
-                            placeholder="First and last name"
+                            placeholder="Cruz"
                             className={inputClasses}
                         />
-                        <InputError message={errors.name} />
+                        <InputError message={errors.lname} />
+                        </div>
+
+                        <div className='flex flex-col gap-1.5'>
+                        <Label htmlFor="sname" className="text-auth-foreground">
+                           Suffix Name
+                        </Label>
+                        <Input
+                            id="sname"
+                            type="text"
+                            
+                            tabIndex={2}
+                            autoComplete="sname"
+                            value={data.sname}
+                            onChange={(e) => setData('sname', e.target.value)}
+                            disabled={processing}
+                            placeholder="Jr."
+                            className={inputClasses}
+                        />
+                        <InputError message={errors.sname} />
+                        </div>
                     </div>
 
                     <div className="grid gap-2">
@@ -99,7 +164,7 @@ export default function Register() {
                         />
                         <InputError message={errors.email} />
                     </div>
-
+                    <div className="grid sm:grid-cols-2 gap-4">
                     <div className="grid gap-2">
                         <Label htmlFor="password" className="text-auth-foreground">
                             Password
@@ -118,7 +183,7 @@ export default function Register() {
                         />
                         <InputError message={errors.password} />
                     </div>
-
+                    
                     <div className="grid gap-2">
                         <Label htmlFor="password_confirmation" className="text-auth-foreground">
                             Confirm password
@@ -136,6 +201,7 @@ export default function Register() {
                             className={inputClasses}
                         />
                         <InputError message={errors.password_confirmation} />
+                    </div>
                     </div>
 
                     <Button type="submit" className="mt-1 w-full" tabIndex={6} disabled={processing}>

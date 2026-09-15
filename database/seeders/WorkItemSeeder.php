@@ -133,56 +133,53 @@ class WorkItemSeeder extends Seeder
             })->get();
 
             $titles = $titlesByProject[$project->name] ?? [];
-            $numItems = rand(10, min(15, count($titles)));
 
-            if ($numItems > count($titles)) {
-                $additionalTitles = [
-                    'Review and refine requirements',
-                    'Create technical specification',
-                    'Set up development environment',
-                    'Perform code review',
-                    'Update documentation',
-                ];
-                $titles = array_merge($titles, $additionalTitles);
+            if (empty($titles) || $groups->isEmpty() || $statuses->isEmpty()) {
+                continue;
             }
 
+            $numItems = min(count($titles), random_int(10, 15));
             $selectedTitles = array_slice($titles, 0, $numItems);
             shuffle($selectedTitles);
 
             foreach ($selectedTitles as $index => $title) {
                 $status = $statuses->random();
                 $group = $groups->get($index % $groups->count()); // Distribute evenly across all groups
-                $assignee = $members->random();
-                $priority = $priorities[array_rand($priorities)];
+                $assignee = $members->isNotEmpty() ? $members->random() : User::first();
+                $priority = $priorities[random_int(0, count($priorities) - 1)];
+
                 $groupStart = $group->start_date
                     ? $group->start_date->copy()->startOfDay()
                     : now()->startOfDay();
                 $groupEnd = $group->end_date
                     ? $group->end_date->copy()->startOfDay()
-                    : now()->addMonths(3)->startOfDay();
-                $groupDuration = max(1, $groupStart->diffInDays($groupEnd));
+                    : now()->addMonthsNoOverflow(3)->startOfDay();
 
-                $daysFromStart = rand(0, $groupDuration);
-                $dueDate = $groupStart->copy()->addDays($daysFromStart);
+                $span = max(0, (int) $groupStart->diffInDays($groupEnd));
 
-                $startDate = $dueDate->copy()->subDays(rand(0, 7));
-
-                // Clamp start date to not go before group start
-                if ($startDate->lessThan($groupStart)) {
-                    $startDate = $groupStart->copy();
+                // Due date: random day inside the group window, clamped to group end.
+                $dueDate = $groupStart->copy()->addDays(random_int(0, $span));
+                if ($dueDate->greaterThan($groupEnd)) {
+                    $dueDate = $groupEnd->copy();
                 }
+
+                // Start: 0-7 days before due, never before the group start,
+                // never after the due date — always inside the group window.
+                $startLead = random_int(0, min(7, max(0, (int) $groupStart->diffInDays($dueDate))));
+                $startDate = $dueDate->copy()->subDays($startLead);
 
                 work_item::create([
                     'project_id' => $project->id,
                     'status_id' => $status->id,
                     'group_id' => $group->id,
+                    'milestone_id' => $group->milestone_id,
                     'title' => $title,
                     'description' => "Task: {$title} for the {$project->name} project.",
                     'assignee_id' => $assignee->id,
                     'priority' => $priority,
-                    'start_date' => $startDate->format('Y-m-d'),
-                    'due_date' => $dueDate->format('Y-m-d'),
-                    'progress' => rand(0, 100),
+                    'start_date' => $startDate->toDateString(),
+                    'due_date' => $dueDate->toDateString(),
+                    'progress' => random_int(0, 100),
                 ]);
             }
         }

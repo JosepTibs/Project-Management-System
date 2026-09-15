@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\roles;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -32,23 +33,28 @@ class RegisteredUserController extends Controller
     {
         $request->validate([
             'username' => 'required|string|max:255',
-            'name' => 'required|string|max:255',
+            'fname' => 'required|string|max:255',
+            'mname' => 'nullable|string|max:255',
+            'lname' => 'required|string|max:255',
+            'sname' => 'nullable|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
-        // Split the 'name' field into fname, mname, lname, sname
-        $nameParts = explode(' ', trim($request->name), 4);
+       
 
         $user = User::create([
             'username' => $request->username,
-            'fname' => $nameParts[0] ?? '',
-            'mname' => $nameParts[1] ?? null,
-            'lname' => $nameParts[2] ?? '',
-            'sname' => $nameParts[3] ?? null,
+            'fname' => $request->fname,
+            'mname' => $request->mname ?? null,
+            'lname' => $request->lname ?? null,
+            'sname' => $request->sname ?? null,
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+        $user->assignRole('member');
+
+        
 
         event(new Registered($user));
 
@@ -56,4 +62,14 @@ class RegisteredUserController extends Controller
 
         return to_route('dashboard');
     }
+
+    public function assignRole(string $roleName): void
+{
+    $role = roles::where('name', $roleName)->first();
+    
+    if ($role) {
+        $this->roles()->syncWithoutDetaching([$role->id]);
+    }
+}
+
 }

@@ -17,5 +17,5 @@ export async function apiFetch(
     headers.set('Accept', 'application/json');
     headers.set('X-Inertia', 'false');
 
-    return fetch(input, { ...init, headers });
+    return fetch(input, { ...init, headers, credentials: 'include' });
 }

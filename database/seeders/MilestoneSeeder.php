@@ -4,14 +4,15 @@ namespace Database\Seeders;
 
 use App\Models\milestones;
 use App\Models\projects;
+use Database\Seeders\Concerns\ChunksDateRange;
 use Illuminate\Database\Seeder;
 
 class MilestoneSeeder extends Seeder
 {
+    use ChunksDateRange;
+
     public function run(): void
     {
-        $projects = projects::all();
-
         $milestoneTemplates = [
             [
                 'name' => 'Planning Phase',
@@ -35,33 +36,24 @@ class MilestoneSeeder extends Seeder
             ],
         ];
 
-        foreach ($projects as $project) {
+        foreach (projects::all() as $project) {
             $projectStart = $project->start_date
                 ? $project->start_date->copy()->startOfDay()
-                : now()->subMonth(6)->startOfDay();
+                : now()->subMonthsNoOverflow(6)->startOfDay();
             $projectEnd = $project->end_date
                 ? $project->end_date->copy()->startOfDay()
-                : now()->addMonth(6)->startOfDay();
-            $projectDuration = $projectStart->diffInDays($projectEnd);
-            $milestoneDuration = (int) ceil($projectDuration / 4);
+                : now()->addMonthsNoOverflow(6)->startOfDay();
 
-            foreach ($milestoneTemplates as $index => $template) {
-                $startDate = $projectStart->copy()->addDays($index * $milestoneDuration);
-                $targetDate = $startDate->copy()->addDays($milestoneDuration - 1);
-
-                // Clamp to project end date — never exceed project end
-                if ($targetDate->greaterThan($projectEnd)) {
-                    $targetDate = $projectEnd->copy();
-                }
-
+            // Milestones exactly tile the project window: no gaps, no overhang.
+            foreach ($this->dateWindows($projectStart, $projectEnd, count($milestoneTemplates)) as $index => $window) {
                 milestones::create([
                     'project_id' => $project->id,
-                    'name' => $template['name'],
-                    'description' => $template['description'],
-                    'start_date' => $startDate->format('Y-m-d'),
-                    'target_date' => $targetDate->format('Y-m-d'),
+                    'name' => $milestoneTemplates[$index]['name'],
+                    'description' => $milestoneTemplates[$index]['description'],
+                    'start_date' => $window['start']->toDateString(),
+                    'target_date' => $window['end']->toDateString(),
                     'completed_at' => null,
-                    'order' => $template['order'],
+                    'order' => $milestoneTemplates[$index]['order'],
                 ]);
             }
         }

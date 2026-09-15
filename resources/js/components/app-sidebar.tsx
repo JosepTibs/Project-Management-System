@@ -15,11 +15,6 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: "Profile",
-        url: '/profile',
-        icon: User2,
-    },
-    {
         title: 'Projects',
         url: '/projects',
         icon: FolderKanban,
@@ -50,6 +45,11 @@ const mainNavItems: NavItem[] = [
 ];
 
 const footerNavItems: NavItem[] = [
+    {
+        title: "Profile",
+        url: '/profile',
+        icon: User2,
+    },
     {
         title: 'Notifications',
         url: '/notifications',

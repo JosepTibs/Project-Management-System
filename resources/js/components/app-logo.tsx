@@ -2,7 +2,17 @@ export default function AppLogo() {
     return (
         <>
             <div className="flex aspect-square size-8 items-center justify-center">
-                <img src="/phccilogo.png" alt="logo" className="size-full object-contain" />
+                <img 
+                    src="/phccilogo-light.png" 
+                    alt="logo" 
+                    className="size-full object-contain dark:hidden" 
+                />
+                {/* Logo for Dark Mode */}
+                <img 
+                    src="/phccilogo-dark.png" 
+                    alt="logo dark" 
+                    className="hidden size-full object-contain dark:block" 
+                />
             </div>
             <div className="ml-1 grid flex-1 text-left text-sm">
                 <span className="mb-0.5 truncate leading-none font-semibold">PHCCI Project Management System</span>

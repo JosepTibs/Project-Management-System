@@ -57,20 +57,30 @@ export function NotificationBell() {
     async function fetchRecent() {
         try {
             const res = await apiFetch('/api/notifications/recent');
+            if(!res.ok){
+                console.error('failed to fetch notifications',  res.status);
+                setNotifications([]);
+            }
             const data = await res.json();
             setNotifications(data.notifications);
         } catch (e) {
             console.error('Failed to fetch notifications', e);
+            setNotifications([]);
         }
     }
 
     async function fetchUnreadCount() {
         try {
             const res = await apiFetch('/api/notifications/unread-count');
+            if(!res.ok){
+                console.error('Failed to fetch unread count',  res.status);
+                setNotifications([]);
+            }
             const data = await res.json();
-            setUnreadCount(data.count);
+            setUnreadCount(data.count ?? 0);
         } catch (e) {
             console.error('Failed to fetch unread count', e);
+            setUnreadCount(0);
         }
     }
 

@@ -17,7 +17,7 @@ export default function AuthSimpleLayout({ children, title, description }: AuthL
                         <div className="flex flex-col items-center gap-3">
                             <Link href={route('home')} className="flex flex-col items-center gap-2 font-medium">
                                 <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-md bg-auth-surface ring-1 ring-auth-accent/30">
-                                    <img src="/phccilogo.png" alt="PHCCI logo" className="size-10 object-contain" />
+                                    <img src="/phccilogo-light.png" alt="PHCCI logo" className="size-10 object-contain" />
                                 </div>
                                 <span className="sr-only">{title}</span>
                             </Link>

@@ -77,8 +77,10 @@ class ProjectSeeder extends Seeder
         ];
 
         foreach ($projects as $project) {
-            $project['start_date'] = now()->subMonth(6)->startOfMonth()->format('Y-m-d');
-            $project['end_date'] = now()->addMonth(6)->startOfMonth()->format('Y-m-d');
+            // ~12 months centered on today. MonthsNoOverflow avoids the
+            // Jan-31 -> Mar-3 style jump plain subMonths/addMonths can produce.
+            $project['start_date'] = now()->subMonthsNoOverflow(6)->startOfMonth()->toDateString();
+            $project['end_date'] = now()->addMonthsNoOverflow(6)->startOfMonth()->toDateString();
             projects::create($project);
         }
     }

@@ -5,14 +5,15 @@ namespace Database\Seeders;
 use App\Models\milestones;
 use App\Models\projects;
 use App\Models\work_item_groups;
+use Database\Seeders\Concerns\ChunksDateRange;
 use Illuminate\Database\Seeder;
 
 class WorkItemGroupSeeder extends Seeder
 {
+    use ChunksDateRange;
+
     public function run(): void
     {
-        $projects = projects::all();
-
         $groupData = [
             ['name' => 'Sprint 1', 'description' => 'Initial development sprint focusing on core features and setup.'],
             ['name' => 'Sprint 2', 'description' => 'Second sprint for additional features and refinements.'],
@@ -24,52 +25,43 @@ class WorkItemGroupSeeder extends Seeder
             ['name' => 'Sprint 8', 'description' => 'Final sprint for launch preparation and documentation.'],
         ];
 
-        foreach ($projects as $project) {
+        foreach (projects::all() as $project) {
             $milestones = milestones::where('project_id', $project->id)->orderBy('order')->get();
 
             if ($milestones->isEmpty()) {
                 continue;
             }
 
-            // Pre-compute which groups belong to which milestone
+            // Which milestone each group index belongs to (round-robin)
             $groupsByMilestone = [];
             foreach ($groupData as $index => $group) {
-                $milestoneIndex = $index % $milestones->count();
-                $groupsByMilestone[$milestoneIndex][] = $index;
+                $groupsByMilestone[$index % $milestones->count()][] = $index;
             }
 
             foreach ($groupData as $index => $group) {
                 $milestoneIndex = $index % $milestones->count();
                 $milestone = $milestones->get($milestoneIndex);
+                $siblings = $groupsByMilestone[$milestoneIndex];
 
                 $milestoneStart = $milestone->start_date
                     ? $milestone->start_date->copy()->startOfDay()
                     : now()->startOfDay();
                 $milestoneEnd = $milestone->target_date
                     ? $milestone->target_date->copy()->startOfDay()
-                    : now()->addMonths(3)->startOfDay();
-                $milestoneDuration = max(1, $milestoneStart->diffInDays($milestoneEnd));
+                    : now()->addMonthsNoOverflow(3)->startOfDay();
 
-                $groupCount = count($groupsByMilestone[$milestoneIndex]);
-                $groupDuration = (int) ceil($milestoneDuration / $groupCount);
-
-                $positionInMilestone = array_search($index, $groupsByMilestone[$milestoneIndex]);
-
-                $startDate = $milestoneStart->copy()->addDays($positionInMilestone * $groupDuration);
-                $endDate = $startDate->copy()->addDays($groupDuration - 1);
-
-                // Clamp to milestone end date — never exceed milestone target_date
-                if ($endDate->greaterThan($milestoneEnd)) {
-                    $endDate = $milestoneEnd->copy();
-                }
+                // Tile THIS milestone's window across only its own groups.
+                // Windows are contiguous and never leave the milestone range.
+                $windows = $this->dateWindows($milestoneStart, $milestoneEnd, count($siblings));
+                $window = $windows[array_search($index, $siblings)];
 
                 work_item_groups::create([
                     'project_id' => $project->id,
-                    'milestone_id' => $milestone?->id,
+                    'milestone_id' => $milestone->id,
                     'name' => $group['name'],
                     'description' => $group['description'],
-                    'start_date' => $startDate->format('Y-m-d'),
-                    'end_date' => $endDate->format('Y-m-d'),
+                    'start_date' => $window['start']->toDateString(),
+                    'end_date' => $window['end']->toDateString(),
                 ]);
             }
         }

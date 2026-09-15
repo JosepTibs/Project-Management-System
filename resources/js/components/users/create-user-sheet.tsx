@@ -86,7 +86,7 @@ export default function CreateUserSheet({ open, onOpenChange, roles, user }: Cre
                     <div className="space-y-2">
                         <Label htmlFor="username">Username</Label>
                         <Input
-                            id="username"
+                            id="username" name="username" autoComplete="off"
                             value={username}
                             onChange={(e) => setUserName(e.target.value)}
                             placeholder="Alwayswannafly"
@@ -167,7 +167,7 @@ export default function CreateUserSheet({ open, onOpenChange, roles, user }: Cre
                     <div className="space-y-2">
                         <Label htmlFor="password">Password</Label>
                         <Input
-                            id="password"
+                            id="password"  name="password" autoComplete="new-password"
                             type="password"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
@@ -182,7 +182,7 @@ export default function CreateUserSheet({ open, onOpenChange, roles, user }: Cre
                     <div className="space-y-2">
                         <Label htmlFor="password_confirmation">Confirm Password</Label>
                         <Input
-                            id="password_confirmation"
+                            id="password_confirmation" name="password" autoComplete="new-password"
                             type="password"
                             value={passwordConfirmation}
                             onChange={(e) => setPasswordConfirmation(e.target.value)}

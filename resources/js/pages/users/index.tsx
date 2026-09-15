@@ -10,7 +10,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Plus, Search, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { useState, useMemo, useCallback } from 'react';
 import { useReactTable, getCoreRowModel, getFilteredRowModel, getSortedRowModel, getPaginationRowModel, createColumnHelper, type SortingState, type FilterFn} from '@tanstack/react-table';
-import CreateUserSheet from '@/components/users/create-user-sheet';
+import CreateUserSheet, { SheetUserData } from '@/components/users/create-user-sheet';
 import { confirmRequest } from '@/components/confirm-dialog';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -95,6 +95,7 @@ export default function UsersIndex() {
     const [roleFilter, setRoleFilter] = useState(filters.role ?? '');
     const [sorting, setSorting] = useState<SortingState>([]);
     const [createOpen, setCreateOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<SheetUserData | null>(null); 
 
     // Apply role filter to data
     const filteredData = useMemo(() => {
@@ -236,11 +237,23 @@ export default function UsersIndex() {
                     const user = row.original;
                     return (
                         <div className="flex justify-end gap-2">
-                            <Link href={`/users/${user.id}/edit`}>
-                                <Button variant="outline" size="sm">
+                                <Button variant="outline" 
+                                size="sm"
+                                onClick={() => {
+                                    setEditingUser({
+                                        id: user.id,
+                                        username: user.fname,
+                                        fname: user.fname,
+                                        mname: user.mname,
+                                        lname: user.lname,
+                                        sname: user.sname,
+                                        email: user.email,
+                                        role_id: user.role?.id ?? null,
+                                    });
+                                    setCreateOpen(true);
+                                }}>
                                     <Pencil className="h-4 w-4" />
                                 </Button>
-                            </Link>
                             {canDeleteUsers && (
                                 <Button
                                     variant="outline"
@@ -291,6 +304,7 @@ export default function UsersIndex() {
             router.delete(`/users/${userId}`, { preserveScroll: true });
         }
     }
+    
 
     const handleRoleChange = useCallback(
         (value: string) => {
@@ -302,7 +316,14 @@ export default function UsersIndex() {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Users" />
-            <CreateUserSheet open={createOpen} onOpenChange={setCreateOpen} roles={roles} />
+            <CreateUserSheet
+    key={editingUser ? `edit-${editingUser.id}` : 'create'}
+    open={createOpen}
+    onOpenChange={setCreateOpen}
+    roles={roles}
+    user={editingUser}
+/>
+
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
                 <div className="flex items-center justify-between">
                     <h1 className="text-2xl font-bold">Users</h1>

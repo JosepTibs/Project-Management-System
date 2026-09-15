@@ -1,206 +1,174 @@
 /*
  * ============================================================================
- *  THEME.CSS — Portable Design Tokens
+ *  THEME.CSS — Portable Design Tokens (Tailwind CSS v4, CSS-first config)
  * ============================================================================
- *  This file is the SINGLE SOURCE OF TRUTH for the UI & color scheme.
- *  It is intentionally self-contained so it can be copied into any other
- *  project that uses:
- *      - Tailwind CSS v4  (CSS-first configuration via `@theme`)
- *      - A shadcn/ui style component layer (optional but expected)
- *      - The `@tailwindcss/vite` plugin
- *
- *  To replicate in a fresh project:
- *      1. Copy this file into `resources/css/theme.css`.
- *      2. Import it from your global stylesheet BEFORE app-specific CSS:
- *             @import 'tailwindcss';
- *             @import './theme.css';
- *      3. Wire up the appearance hook (see use-appearance hooks in this repo).
- *      4. Optionally swap the PHCCI brand palette below for your own.
- *
- *  Palette model:
- *      - `:root`  => LIGHT mode values (HSL)
- *      - `.dark`  => DARK mode overrides (gated by the @custom-variant below)
- *      - `@theme` => maps raw tokens (--primary, --card, ...) into Tailwind
- *                    color utilities (bg-primary, text-card-foreground, ...)
- *
- *  Naming convention (<token> => usage):
- *      --background                     => bg-background
- *      --foreground                     => text-foreground
- *      --primary   / --primary-foreground   => bg-primary  / text-primary-foreground
- *      --card      / --card-foreground       => bg-card     / text-card-foreground
+ *  Structure (strict v4 rules):
+ *      1. Single `@import "tailwindcss"` — MUST be the first statement.
+ *      2. `@plugin` / `@custom-variant` — after the import, BEFORE `@theme`.
+ *      3. `@theme` — contains ONLY custom properties (light defaults, literal).
+ *      4. `.dark` selector — plain CSS that re-declares the SAME --color-*
+ *         tokens. Tailwind utilities emit var(--color-*), so the .dark block
+ *         swaps them at runtime. This is the v4-safe dark-mode pattern.
+ *      5. `@layer base` — element bindings.
+ *  NOTE: `@variant` / `@apply` must NEVER be placed inside `@theme`
+ *  ("@theme blocks must only contain custom properties or @keyframes").
  * ============================================================================
  */
 
-@import 'tailwindcss';
+@import "tailwindcss";
 
 @plugin 'tailwindcss-animate';
 
-/* ---------------------------------------------------------------------------
- * DARK VARIANT
- * Tailwind v4 defines variants in CSS. `dark` mirrors the classic Tailwind v3
- * class-based dark mode: any element (or an ancestor) carrying `.dark` flips
- * these tokens off. The `.dark` selector below supplies the actual values.
- * ------------------------------------------------------------------------- */
-@custom-variant dark (&:is(.dark *));
+/* Class-based dark mode: toggled by .dark on <html> (use-appearance hook) */
+@custom-variant dark (&:where(.dark, .dark *));
 
-/* ---------------------------------------------------------------------------
- * @theme — register fonts, radii and map raw tokens to Tailwind color names.
- * The `--color-*` names power utilities like `bg-primary` / `text-muted`.
- * ------------------------------------------------------------------------- */
 @theme {
-    /* --- Typography ------------------------------------------------------ */
-    --font-sans:
-        'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 
     /* --- Radii ----------------------------------------------------------- */
+    --radius: 0.5rem;
     --radius-lg: var(--radius);
     --radius-md: calc(var(--radius) - 2px);
     --radius-sm: calc(var(--radius) - 4px);
 
-    /* --- Surfaces -------------------------------------------------------- */
-    --color-background: var(--background);
-    --color-foreground: var(--foreground);
-    --color-card: var(--card);
-    --color-card-foreground: var(--card-foreground);
-    --color-popover: var(--popover);
-    --color-popover-foreground: var(--popover-foreground);
+    /* ===========================================================================
+     * LIGHT MODE ASSIGNMENTS: Green + Blue + White (Defaults)
+     * =========================================================================== */
+    --color-background: hsl(210, 40%, 98%);       /* Ice-white blue background */
+    --color-foreground: hsl(222, 47%, 11%);       /* Deep navy blue text */
+    --color-card: hsl(0, 0%, 100%);               /* Pure white cards */
+    --color-card-foreground: hsl(222, 47%, 11%);
+    --color-popover: hsl(0, 0%, 100%);
+    --color-popover-foreground: hsl(222, 47%, 11%);
 
-    /* --- Brand / emphasis ------------------------------------------------ */
-    --color-primary: var(--primary);
-    --color-primary-foreground: var(--primary-foreground);
-    --color-secondary: var(--secondary);
-    --color-secondary-foreground: var(--secondary-foreground);
-    --color-muted: var(--muted);
-    --color-muted-foreground: var(--muted-foreground);
-    --color-accent: var(--accent);
-    --color-accent-foreground: var(--accent-foreground);
-    --color-destructive: var(--destructive);
-    --color-destructive-foreground: var(--destructive-foreground);
+    /* Brand Focus (Vibrant Teals and Mint Greens) */
+    --color-primary: hsl(165, 85%, 38%);          /* Vivid Emerald/Mint Green */
+    --color-primary-foreground: hsl(0, 0%, 100%);
+    --color-secondary: hsl(214, 32%, 91%);        /* Slate blue-gray secondary */
+    --color-secondary-foreground: hsl(222, 47%, 11%);
+    --color-muted: hsl(214, 32%, 91%);
+    --color-muted-foreground: hsl(215, 16%, 47%);
+    --color-accent: hsl(190, 90%, 40%);           /* Electric cyan-blue accent */
+    --color-accent-foreground: hsl(0, 0%, 100%);
+    --color-destructive: hsl(0, 84.2%, 60.2%);
+    --color-destructive-foreground: hsl(0, 0%, 98%);
 
-    /* --- Inputs / focus -------------------------------------------------- */
-    --color-border: var(--border);
-    --color-input: var(--input);
-    --color-ring: var(--ring);
+    /* Component Frameworks */
+    --color-border: hsl(214, 32%, 85%);
+    --color-input: hsl(214, 32%, 85%);
+    --color-ring: hsl(165, 85%, 38%);
 
-    /* --- Charts ---------------------------------------------------------- */
-    --color-chart-1: var(--chart-1);
-    --color-chart-2: var(--chart-2);
-    --color-chart-3: var(--chart-3);
-    --color-chart-4: var(--chart-4);
-    --color-chart-5: var(--chart-5);
+    /* Analytics / Charts Theme */
+    --color-chart-1: hsl(165, 85%, 38%);          /* Mint */
+    --color-chart-2: hsl(190, 90%, 40%);          /* Blue-cyan */
+    --color-chart-3: hsl(215, 60%, 50%);          /* Deep slate blue */
+    --color-chart-4: hsl(142, 70%, 45%);          /* Pure green */
+    --color-chart-5: hsl(200, 80%, 60%);          /* Sky blue */
 
-    /* --- Sidebar --------------------------------------------------------- */
-    --color-sidebar: var(--sidebar-background);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-ring: var(--sidebar-ring);
+    /* Navigation Layout */
+    --color-sidebar: hsl(210, 40%, 96%);
+    --color-sidebar-foreground: hsl(222, 47%, 20%);
+    --color-sidebar-primary: hsl(165, 85%, 38%);
+    --color-sidebar-primary-foreground: hsl(0, 0%, 100%);
+    --color-sidebar-accent: hsl(214, 32%, 88%);
+    --color-sidebar-accent-foreground: hsl(222, 47%, 11%);
+    --color-sidebar-border: hsl(214, 32%, 85%);
+    --color-sidebar-ring: hsl(165, 85%, 38%);
 
-    /* --- PHCCI auth brand palette ---------------------------------------- */
-    /* Single source of truth for the authentication screens. Fixed values so
-       login/register are always on-brand; replace or delete for other products. */
-    --color-auth-bg: #0a1128;
-    --color-auth-surface: #131f42;
-    --color-auth-foreground: #f4f6f9;
-    --color-auth-muted: #8c9a9e;
-    --color-auth-accent: #20e2cd;
+    /* Dynamic Auth Variables (Light Mode Mapping) */
+    --color-auth-bg: hsl(210, 40%, 95%);
+    --color-auth-surface: hsl(0, 0%, 100%);
+    --color-auth-foreground: hsl(222, 47%, 11%);
+    --color-auth-muted: hsl(215, 16%, 47%);
+    --color-auth-accent: hsl(165, 85%, 38%);
+}
+
+/* ===========================================================================
+ * DARK MODE OVERRIDES: Purple + Gold + Cyber Dark
+ * Re-declares the SAME --color-* tokens; Tailwind utilities reference them
+ * via var(--color-*), so every dark: / .dark descendant flips automatically.
+ * =========================================================================== */
+.dark {
+    --color-background: hsl(270, 50%, 8%);        /* Deep royal purple-black */
+    --color-foreground: hsl(260, 20%, 98%);       /* Luminous soft white text */
+    --color-card: hsl(270, 45%, 14%);             /* Midnight amethyst cards */
+    --color-card-foreground: hsl(260, 20%, 98%);
+    --color-popover: hsl(270, 45%, 14%);
+    --color-popover-foreground: hsl(260, 20%, 98%);
+
+    /* Brand Focus */
+    --color-primary: hsl(275, 85%, 64%);          /* Radiant Electric Violet */
+    --color-primary-foreground: hsl(270, 50%, 6%);
+    --color-secondary: hsl(270, 35%, 20%);        /* Deep velvet purple */
+    --color-secondary-foreground: hsl(260, 20%, 98%);
+    --color-muted: hsl(270, 35%, 20%);
+    --color-muted-foreground: hsl(265, 15%, 70%);
+    --color-accent: hsl(45, 93%, 47%);            /* Pure Luxury Gold */
+    --color-accent-foreground: hsl(270, 50%, 6%);
+    --color-destructive: hsl(350, 80%, 55%);
+    --color-destructive-foreground: hsl(0, 0%, 98%);
+
+    /* Component Frameworks */
+    --color-border: hsl(270, 30%, 25%);
+    --color-input: hsl(270, 30%, 25%);
+    --color-ring: hsl(275, 85%, 64%);
+
+    /* Analytics / Charts Theme */
+    --color-chart-1: hsl(275, 85%, 64%);
+    --color-chart-2: hsl(45, 93%, 47%);
+    --color-chart-3: hsl(290, 70%, 55%);
+    --color-chart-4: hsl(35, 90%, 55%);
+    --color-chart-5: hsl(250, 80%, 65%);
+
+    /* Navigation Layout */
+    --color-sidebar: hsl(270, 50%, 6%);
+    --color-sidebar-foreground: hsl(265, 15%, 85%);
+    --color-sidebar-primary: hsl(275, 85%, 64%);
+    --color-sidebar-primary-foreground: hsl(270, 50%, 6%);
+    --color-sidebar-accent: hsl(270, 35%, 16%);
+    --color-sidebar-accent-foreground: hsl(260, 20%, 98%);
+    --color-sidebar-border: hsl(270, 30%, 20%);
+    --color-sidebar-ring: hsl(275, 85%, 64%);
+
+    /* Dynamic Auth Variables */
+    --color-auth-bg: hsl(270, 50%, 6%);           /* Deep royal void */
+    --color-auth-surface: hsl(270, 45%, 12%);     /* Velvet glass cards */
+    --color-auth-foreground: hsl(260, 20%, 95%);  /* Clean neon white labels */
+    --color-auth-muted: hsl(265, 15%, 65%);       /* Mystic amethyst gray */
+    --color-auth-accent: hsl(45, 93%, 53%);       /* Glowing Gold accents */
 }
 
 /* ---------------------------------------------------------------------------
- * BASE LAYER — default border-color.
- * The default border color changed to `currentColor` in Tailwind CSS v4; these
- * compatibility styles keep borders looking like Tailwind v3 by default.
+ * shadcn / app.css compat aliases — app.css (Gantt chart, date pickers,
+ * Radix select overrides) and some shadcn components reference the legacy
+ * bare variable names. Tailwind v4 does NOT auto-create them from
+ * --color-* tokens, so they must be declared explicitly.
  * ------------------------------------------------------------------------- */
-@layer base {
-    *,
-    ::after,
-    ::before,
-    ::backdrop,
-    ::file-selector-button {
-        border-color: var(--color-gray-200, currentColor);
-    }
-}
-
-/* ===========================================================================
- * LIGHT MODE TOKENS
- * =========================================================================== */
 :root {
-    --background: hsl(0, 0%, 100%);
-    --foreground: hsl(0, 0%, 3.9%);
-    --card: hsl(0, 0%, 100%);
-    --card-foreground: hsl(0, 0%, 3.9%);
-    --popover: hsl(0, 0%, 100%);
-    --popover-foreground: hsl(0, 0%, 3.9%);
-    --primary: hsl(168, 74%, 42%);
-    --primary-foreground: hsl(0, 0%, 98%);
-    --secondary: hsl(0, 0%, 96.1%);
-    --secondary-foreground: hsl(0, 0%, 9%);
-    --muted: hsl(0, 0%, 96.1%);
-    --muted-foreground: hsl(0, 0%, 45.1%);
-    --accent: hsl(0, 0%, 96.1%);
-    --accent-foreground: hsl(0, 0%, 9%);
-    --destructive: hsl(0, 84.2%, 60.2%);
-    --destructive-foreground: hsl(0, 0%, 98%);
-    --border: hsl(0, 0%, 92.8%);
-    --input: hsl(0, 0%, 89.8%);
-    --ring: hsl(168, 74%, 42%);
-    --chart-1: hsl(168, 74%, 42%);
-    --chart-2: hsl(168, 60%, 35%);
-    --chart-3: hsl(168, 50%, 28%);
-    --chart-4: hsl(180, 70%, 50%);
-    --chart-5: hsl(160, 65%, 38%);
-    --radius: 0.5rem;
-    --sidebar-background: hsl(0, 0%, 98%);
-    --sidebar-foreground: hsl(240, 5.3%, 30%);
-    --sidebar-primary: hsl(168, 74%, 42%);
-    --sidebar-primary-foreground: hsl(0, 0%, 98%);
-    --sidebar-accent: hsl(0, 0%, 94%);
-    --sidebar-accent-foreground: hsl(0, 0%, 30%);
-    --sidebar-border: hsl(0, 0%, 91%);
-    --sidebar-ring: hsl(168, 74%, 42%);
+    --background: var(--color-background);
+    --foreground: var(--color-foreground);
+    --card: var(--color-card);
+    --card-foreground: var(--color-card-foreground);
+    --popover: var(--color-popover);
+    --popover-foreground: var(--color-popover-foreground);
+    --primary: var(--color-primary);
+    --primary-foreground: var(--color-primary-foreground);
+    --secondary: var(--color-secondary);
+    --secondary-foreground: var(--color-secondary-foreground);
+    --muted: var(--color-muted);
+    --muted-foreground: var(--color-muted-foreground);
+    --accent: var(--color-accent);
+    --accent-foreground: var(--color-accent-foreground);
+    --destructive: var(--color-destructive);
+    --destructive-foreground: var(--color-destructive-foreground);
+    --border: var(--color-border);
+    --input: var(--color-input);
+    --ring: var(--color-ring);
 }
 
-/* ===========================================================================
- * DARK MODE TOKENS
- * =========================================================================== */
-.dark {
-    --background: hsl(225, 62%, 10%);
-    --foreground: hsl(210, 28%, 95%);
-    --card: hsl(225, 55%, 18%);
-    --card-foreground: hsl(210, 28%, 95%);
-    --popover: hsl(225, 55%, 18%);
-    --popover-foreground: hsl(210, 28%, 95%);
-    --primary: hsl(168, 74%, 42%);
-    --primary-foreground: hsl(0, 0%, 98%);
-    --secondary: hsl(225, 55%, 22%);
-    --secondary-foreground: hsl(210, 28%, 95%);
-    --muted: hsl(225, 35%, 25%);
-    --muted-foreground: hsl(210, 12%, 65%);
-    --accent: hsl(225, 55%, 22%);
-    --accent-foreground: hsl(210, 28%, 95%);
-    --destructive: hsl(0, 84%, 60%);
-    --destructive-foreground: hsl(0, 0%, 98%);
-    --border: hsl(225, 45%, 28%);
-    --input: hsl(225, 45%, 28%);
-    --ring: hsl(168, 74%, 42%);
-    --chart-1: hsl(168, 74%, 42%);
-    --chart-2: hsl(168, 60%, 35%);
-    --chart-3: hsl(168, 50%, 28%);
-    --chart-4: hsl(180, 70%, 50%);
-    --chart-5: hsl(160, 65%, 38%);
-    --sidebar-background: hsl(225, 62%, 8%);
-    --sidebar-foreground: hsl(210, 28%, 85%);
-    --sidebar-primary: hsl(168, 74%, 42%);
-    --sidebar-primary-foreground: hsl(0, 0%, 98%);
-    --sidebar-accent: hsl(225, 55%, 20%);
-    --sidebar-accent-foreground: hsl(210, 28%, 85%);
-    --sidebar-border: hsl(225, 45%, 25%);
-    --sidebar-ring: hsl(168, 74%, 42%);
-}
-
+/* ---------------------------------------------------------------------------
+ * BASE LAYER
+ * ------------------------------------------------------------------------- */
 @layer base {
     * {
         @apply border-border;

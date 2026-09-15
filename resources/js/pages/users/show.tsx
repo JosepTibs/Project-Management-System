@@ -48,6 +48,8 @@ export default function ShowUser() {
     const { user, roles } = usePage<ShowUserPageProps>().props;
     const fullName = formatFullName(user);
     const [editOpen, setEditOpen] = useState(false);
+    const [createOpen, setCreateOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<SheetUserData | null>(null); 
 
     // Shape the user for the edit sheet (same contract as the edit page).
     const sheetUser: SheetUserData = {
@@ -74,7 +76,23 @@ export default function ShowUser() {
                     <BackButton defaultUrl="/users" />
                     <h1 className="text-2xl font-bold">{fullName}</h1>
                     <div className="ml-auto">
-                        <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                         <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+            setEditingUser({
+                id: user.id,
+                username: user.username,
+                fname: user.fname,
+                mname: user.mname,
+                lname: user.lname,
+                sname: user.sname,
+                email: user.email,
+                role_id: user.role?.id ?? null,
+            });
+            setCreateOpen(true);
+        }}
+    >
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
                         </Button>
@@ -82,11 +100,13 @@ export default function ShowUser() {
                 </div>
 
                 <CreateUserSheet
-                    open={editOpen}
-                    onOpenChange={setEditOpen}
-                    roles={roles}
-                    user={sheetUser}
-                />
+    key={editingUser ? `edit-${editingUser.id}` : 'create'}
+    open={createOpen}
+    onOpenChange={setCreateOpen}
+    roles={roles}
+    user={editingUser}
+/>
+
 
                 {/* User Info */}
                 <Card>
