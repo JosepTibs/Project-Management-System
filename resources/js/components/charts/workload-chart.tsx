@@ -1,4 +1,4 @@
-import { Bar, BarChart, CartesianGrid, Cell, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 export interface WorkloadDatum {
     name: string;
@@ -45,43 +45,32 @@ export function WorkloadChart({ data, height = 240 }: WorkloadChartProps) {
 
     const themed = data.map((datum) => ({
         ...datum,
-        fill:
-            datum.color ??
-            (threshold > 0 && datum.value > threshold ? OVERLOAD_BAR : DEFAULT_BAR),
+        fill: datum.color ?? (threshold > 0 && datum.value > threshold ? OVERLOAD_BAR : DEFAULT_BAR),
     }));
 
     return (
-        <BarChart
-            data={themed}
-            height={height}
-            margin={{ top: 10, right: 12, bottom: 40, left: 0 }}
-        >
-            <CartesianGrid strokeDasharray="3 3" vertical={false} />
-            <XAxis
-                dataKey="name"
-                axisLine={false}
-                tickLine={false}
-                interval={0}
-                angle={-20}
-                tickMargin={8}
-                height={50}
-                tick={xTickStyle}
-            />
-            <YAxis width={34} axisLine={false} tickLine={false} tick={tickStyle} allowDecimals={false} />
-            <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={400} />
-            <Tooltip
-                cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
-                contentStyle={{
-                    background: 'var(--popover)',
-                    border: '1px solid var(--border)',
-                    borderRadius: 6,
-                    color: 'var(--popover-foreground)',
-                    fontSize: 12,
-                }}
-            />
-            {themed.map((datum, index) => (
-                <Cell key={index} fill={datum.fill} />
-            ))}
-        </BarChart>
+        <div style={{ width: '100%', height }}>
+            <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={themed} margin={{ top: 10, right: 12, bottom: 40, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} interval={0} angle={-20} tickMargin={8} height={50} tick={xTickStyle} />
+                    <YAxis width={34} axisLine={false} tickLine={false} tick={tickStyle} allowDecimals={false} />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]} animationDuration={400} />
+                    <Tooltip
+                        cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
+                        contentStyle={{
+                            background: 'var(--popover)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 6,
+                            color: 'var(--popover-foreground)',
+                            fontSize: 12,
+                        }}
+                    />
+                    {themed.map((datum, index) => (
+                        <Cell key={index} fill={datum.fill} />
+                    ))}
+                </BarChart>
+            </ResponsiveContainer>
+        </div>
     );
 }

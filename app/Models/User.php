@@ -7,6 +7,7 @@ use App\Traits\LogsActivity;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -30,6 +31,7 @@ class User extends Authenticatable
         'sname',
         'email',
         'password',
+        'position_id',
     ];
 
     /**
@@ -77,6 +79,11 @@ class User extends Authenticatable
     /**
      * Get the roles assigned to this user.
      */
+    public function position(): BelongsTo
+    {
+        return $this->belongsTo(Position::class);
+    }
+
     public function roles(): MorphToMany
     {
         return $this->morphToMany(roles::class, 'model', 'model_has_roles', 'model_id', 'role_id');

@@ -26,6 +26,11 @@ interface Role {
     name: string;
 }
 
+interface Position {
+    id: number;
+    name: string;
+}
+
 interface EditUserData {
     id: number;
     username: string;
@@ -35,15 +40,17 @@ interface EditUserData {
     sname: string;
     email: string;
     role_id: number | null;
+    position_id: number | null;
 }
 
 interface EditUserPageProps extends Record<string, unknown> {
     user: EditUserData;
     roles: Role[];
+    positions: Position[];
 }
 
 export default function EditUser() {
-    const { user, roles } = usePage<EditUserPageProps>().props;
+    const { user, roles, positions } = usePage<EditUserPageProps>().props;
     const [username, setUserName] = useState(user.username);
     const [fname, setFirstName] = useState(user.fname);
     const [mname, setMiddleName] = useState(user.mname);
@@ -53,6 +60,7 @@ export default function EditUser() {
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
     const [roleId, setRoleId] = useState(String(user.role_id ?? ''));
+    const [positionId, setPositionId] = useState(String(user.position_id ?? ''));
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
@@ -70,6 +78,7 @@ export default function EditUser() {
             password: password || undefined,
             password_confirmation: passwordConfirmation || undefined,
             role_id: roleId,
+            position_id: positionId === '' ? null : positionId,
         }, {
             onError: (errs) => {
                 setErrors(errs);
@@ -202,6 +211,26 @@ export default function EditUser() {
                                 />
                             </div>
 
+                            {/* Position */}
+                            <div className="space-y-2">
+                                <Label htmlFor="position">Position</Label>
+                                <Select value={positionId} onValueChange={setPositionId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a position (optional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No position</SelectItem>
+                                        {positions.map((position) => (
+                                            <SelectItem key={position.id} value={String(position.id)}>
+                                                {position.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {errors.position_id && (
+                                    <p className="text-sm text-red-600">{errors.position_id}</p>
+                                )}
+                            </div>
                             {/* Role */}
                             <div className="space-y-2">
                                 <Label htmlFor="role">Role</Label>

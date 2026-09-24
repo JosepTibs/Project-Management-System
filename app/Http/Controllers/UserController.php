@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\model_has_roles;
+use App\Models\Position;
 use App\Models\roles;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -18,7 +19,8 @@ class UserController extends Controller
         $roleFilter = $request->input('role');
 
         $users = User::query()
-            ->with('roles')
+            ->with('roles', 'position')
+            ->when($request->filled('position_id'), fn ($q) => $q->where('position_id', $request->input('position_id')))
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($user) {
@@ -32,6 +34,7 @@ class UserController extends Controller
                     'email' => $user->email,
                     'email_verified_at' => $user->email_verified_at,
                     'role' => $user->roles->first()?->only(['id', 'name']),
+                    'position' => $user->position?->only(['id', 'name']),
                     'created_at' => $user->created_at->format('Y-m-d'),
                 ];
             });
@@ -41,9 +44,11 @@ class UserController extends Controller
         return Inertia::render('users/index', [
             'users' => $users,
             'roles' => $allRoles,
+            'positions' => Position::orderBy('name')->get(['id', 'name']),
             'filters' => [
                 'search' => $search,
                 'role' => $roleFilter,
+                'position_id' => $request->input('position_id'),
             ],
         ]);
     }
@@ -54,6 +59,7 @@ class UserController extends Controller
 
         return Inertia::render('users/create', [
             'roles' => $allRoles,
+            'positions' => Position::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -68,6 +74,7 @@ class UserController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8',
             'role_id' => 'required|exists:roles,id',
+            'position_id' => 'nullable|exists:positions,id',
         ]);
 
         $this->validateRoleAssignment($validated);
@@ -81,6 +88,7 @@ class UserController extends Controller
             'email' => $validated['email'],
             'password' => bcrypt($validated['password']),
             'email_verified_at' => now(),
+            'position_id' => $validated['position_id'] ?? null,
         ]);
 
         model_has_roles::create([
@@ -94,7 +102,7 @@ class UserController extends Controller
 
     public function show(User $user)
     {
-        $user->load('roles');
+        $user->load('roles', 'position');
 
         // Get projects this user is a member of
         $projects = \App\Models\project_members::where('user_id', $user->id)
@@ -118,17 +126,20 @@ class UserController extends Controller
                 'email' => $user->email,
                 'role' => $user->roles->first()?->only(['id', 'name']),
                 'role_id' => $user->roles->first()?->id,
+                'position' => $user->position?->only(['id', 'name']),
+                'position_id' => $user->position_id,
                 'created_at' => $user->created_at->format('Y-m-d'),
                 'projects' => $projects,
             ],
             // Roles available to the edit sheet (same rules as the edit page).
             'roles' => $this->assignableRoles(),
+            'positions' => Position::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
     public function edit(User $user)
     {
-        $user->load('roles');
+        $user->load('roles', 'position');
         $allRoles = $this->assignableRoles();
 
         return Inertia::render('users/edit', [
@@ -141,8 +152,10 @@ class UserController extends Controller
                 'sname'=> $user->sname,
                 'email' => $user->email,
                 'role_id' => $user->roles->first()?->id,
+                'position_id' => $user->position_id,
             ],
             'roles' => $allRoles,
+            'positions' => Position::orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -157,6 +170,7 @@ class UserController extends Controller
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users')->ignore($user->id)],
             'password' => 'nullable|string|min:8',
             'role_id' => 'required|exists:roles,id',
+            'position_id' => 'nullable|exists:positions,id',
         ]);
 
         $this->validateRoleAssignment($validated);
@@ -168,6 +182,7 @@ class UserController extends Controller
             'lname' => $validated['lname'],
             'sname' => $validated['sname'],
             'email' => $validated['email'],
+            'position_id' => $validated['position_id'] ?? null,
         ]);
 
         if (!empty($validated['password'])) {

@@ -1,4 +1,5 @@
-/* Shared types for the project setup wizard.
+/*
+ * Shared types for the project setup wizard.
  * Extracted verbatim from project-setup-sheet.tsx (lines 14-95).
  * The original file keeps its own copies until cutover.
  */
@@ -7,6 +8,7 @@ export interface UserOption {
     username: string;
     email: string;
     role?: string;
+    position?: string;
 }
 
 export interface WorkItemStatusOption {
@@ -38,8 +40,8 @@ export interface NestedGroup {
     id?: number;
     name: string;
     description: string;
-    start_date: string;
-    end_date: string;
+    start_date?: string;
+    end_date?: string;
     assignee_ids: number[];
     work_items: NestedWorkItem[];
 }

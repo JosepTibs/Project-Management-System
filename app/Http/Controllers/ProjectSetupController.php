@@ -28,8 +28,8 @@ class ProjectSetupController extends Controller
             ->get()
             ->groupBy('milestone_id');
 
-        $allUsers = User::with('roles')
-            ->select('id', 'username', 'email', 'fname', 'lname')
+        $allUsers = User::with('roles', 'position')
+            ->select('id', 'username', 'email', 'fname', 'lname', 'position_id')
             ->get()
             ->sortBy(fn ($u) => $u->roles->first()?->name ?? 'zzz')
             ->values();
@@ -55,6 +55,7 @@ class ProjectSetupController extends Controller
                 'username' => $u->username,
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? 'No Role',
+                'position'  => $u->position?->name ?? null,
             ]),
             
             'workItemStatuses' => work_item_statuses::where('project_id', $project->id)->orderBy('order')->get()->unique('name')->values()->map(fn ($s) => [
@@ -154,8 +155,8 @@ class ProjectSetupController extends Controller
             ->get()
             ->groupBy('milestone_id');
 
-        $allUsers = User::with('roles')
-            ->select('id', 'username', 'email', 'fname', 'lname')
+        $allUsers = User::with(['roles', 'position'])
+            ->select('id', 'username', 'email', 'fname', 'lname', 'position_id')
             ->get()
             ->sortBy(fn ($u) => $u->roles->first()?->name ?? 'zzz')
             ->values();
@@ -181,6 +182,7 @@ class ProjectSetupController extends Controller
                 'username' => $u->username,
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? 'No Role',
+                'position' => $u->position?->name ?? null,
             ]),
             'workItemStatuses' => work_item_statuses::where('project_id', $project->id)->orderBy('order')->get()->unique('name')->values()->map(fn ($s) => [
                 'id' => $s->id,
@@ -258,8 +260,6 @@ class ProjectSetupController extends Controller
         'milestones.*.groups.*.id' => 'nullable|integer',
         'milestones.*.groups.*.name' => 'nullable|string|max:255',
         'milestones.*.groups.*.description' => 'nullable|string',
-        'milestones.*.groups.*.start_date' => 'nullable|date',
-        'milestones.*.groups.*.end_date' => 'nullable|date',
         'milestones.*.groups.*.progress' => 'nullable|integer|min:0|max:100',
         'milestones.*.groups.*.assignee_ids' => 'nullable|array',
         'milestones.*.groups.*.assignee_ids.*' => 'exists:users,id',
@@ -292,9 +292,9 @@ class ProjectSetupController extends Controller
 
     if (isset($data['milestones'])) {
         foreach ($data['milestones'] as $milestone) {
-            $msStart = null;
-            $msTarget = null;
-
+            // Milestones are the only hand-set planning level — keep them
+            // inside the project window. Group windows are derived from
+            // their work items, so no group-level checks are needed here.
             if (! empty($milestone['start_date'])) {
                 $msStart = Carbon::parse($milestone['start_date']);
                 if ($msStart->lt($projectStart) || $msStart->gt($projectEnd)) {
@@ -305,45 +305,6 @@ class ProjectSetupController extends Controller
                 $msTarget = Carbon::parse($milestone['target_date']);
                 if ($msTarget->lt($projectStart) || $msTarget->gt($projectEnd)) {
                     return back()->withErrors(['milestones' => 'Milestone target date must be within project dates.']);
-                }
-            }
-
-            // Groups under this milestone
-            if (isset($milestone['groups'])) {
-                foreach ($milestone['groups'] as $group) {
-                    if (! empty($group['start_date']) && $msStart) {
-                        $gStart = Carbon::parse($group['start_date']);
-                        if ($gStart->lt($msStart) || ($msTarget && $gStart->gt($msTarget))) {
-                            return back()->withErrors(['groups' => 'Group start date must be within milestone dates.']);
-                        }
-                    }
-                    if (! empty($group['end_date']) && $msTarget) {
-                        $gEnd = Carbon::parse($group['end_date']);
-                        if (($msStart && $gEnd->lt($msStart)) || $gEnd->gt($msTarget)) {
-                            return back()->withErrors(['groups' => 'Group end date must be within milestone dates.']);
-                        }
-                    }
-
-                    // Work items under this group
-                    if (isset($group['work_items'])) {
-                        $gStart = ! empty($group['start_date']) ? Carbon::parse($group['start_date']) : null;
-                        $gEnd = ! empty($group['end_date']) ? Carbon::parse($group['end_date']) : null;
-
-                        foreach ($group['work_items'] as $item) {
-                            if (! empty($item['start_date']) && $gStart) {
-                                $iStart = Carbon::parse($item['start_date']);
-                                if ($iStart->lt($gStart) || ($gEnd && $iStart->gt($gEnd))) {
-                                    return back()->withErrors(['work_items' => 'Item start date must be within group dates.']);
-                                }
-                            }
-                            if (! empty($item['due_date']) && $gEnd) {
-                                $iDue = Carbon::parse($item['due_date']);
-                                if (($gStart && $iDue->lt($gStart)) || $iDue->gt($gEnd)) {
-                                    return back()->withErrors(['work_items' => 'Item due date must be within group dates.']);
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -471,8 +432,10 @@ class ProjectSetupController extends Controller
                 if (empty($group['name'])) {
                     continue;
                 }
+                // Group dates are DERIVED from their work items — only the
+                // name, description and progress are authored here.
                 $groupData = array_merge(
-                    Arr::only($group, ['name', 'description', 'start_date', 'end_date', 'progress']),
+                    Arr::only($group, ['name', 'description', 'progress']),
                     ['milestone_id' => $milestoneModel->id],
                 );
                 $groupModel = isset($group['id']) && $group['id'] > 0
@@ -499,6 +462,29 @@ class ProjectSetupController extends Controller
                     $itemData = Arr::only($item, [
                         'title', 'description', 'priority', 'start_date', 'due_date', 'assignee_id', 'status_id',
                     ]) + ['group_id' => $groupModel->id];
+
+                    // Clamp item dates into the parent milestone window so the
+                    // derived group window can never escape its milestone.
+                    $msStart = $milestoneModel->start_date?->copy()->startOfDay();
+                    $msEnd = $milestoneModel->target_date?->copy()->startOfDay();
+                    foreach (['start_date', 'due_date'] as $dateField) {
+                        if (empty($itemData[$dateField])) {
+                            continue;
+                        }
+                        $date = Carbon::parse($itemData[$dateField])->startOfDay();
+                        if ($msStart && $date->lt($msStart)) {
+                            $itemData[$dateField] = $msStart->toDateString();
+                        }
+                        if ($msEnd && $date->gt($msEnd)) {
+                            $itemData[$dateField] = $msEnd->toDateString();
+                        }
+                    }
+                    // Keep start on/before due after clamping.
+                    if (! empty($itemData['start_date']) && ! empty($itemData['due_date'])
+                        && Carbon::parse($itemData['start_date'])->gt(Carbon::parse($itemData['due_date']))) {
+                        $itemData['start_date'] = $itemData['due_date'];
+                    }
+
                     if (isset($item['id']) && $item['id'] > 0) {
                         work_item::findOrFail($item['id'])->update($itemData);
                     } else {
@@ -506,9 +492,9 @@ class ProjectSetupController extends Controller
                     }
                 }
 
-                // Auto-derive group progress from its work items when it has
-                // any; otherwise keep the manually entered value.
-               
+                // Recompute the group's derived window (and progress) from its
+                // items. Empty groups keep their previously planned window.
+                work_item::recomputeGroupSchedule($groupModel->id);
             }
         }
     }

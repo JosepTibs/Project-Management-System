@@ -105,10 +105,12 @@ class ProjectsController extends Controller
      */
     private function allUsers()
     {
-        return User::whereHas('roles', function ($query) {
-            $query->where('name', 'member');
-        })
-            ->select('id', 'username', 'email', 'fname', 'lname')
+        return User::with(['roles', 'position'])
+            ->whereHas('roles', function ($query) {
+                // Project teams are staffed from members and project managers.
+                $query->whereIn('name', ['member', 'Project Manager']);
+            })
+            ->select('id', 'username', 'email', 'fname', 'lname', 'position_id')
             ->get()
             ->sortBy(fn ($u) => $u->roles->first()?->name ?? 'zzz')
             ->values()
@@ -117,6 +119,7 @@ class ProjectsController extends Controller
                 'username' => $u->username,
                 'email' => $u->email,
                 'role' => $u->roles->first()?->name ?? 'No Role',
+                'position' => $u->position?->name ?? null,
             ])
             ->values();
     }

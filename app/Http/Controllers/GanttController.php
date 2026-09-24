@@ -8,6 +8,7 @@ use App\Models\projects;
 use App\Models\work_item;
 use App\Models\work_item_groups;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -273,7 +274,26 @@ class GanttController extends Controller
             'end_date'=> 'required|date|after_or_equal:start_date',
         ]);
 
-        $group->update($validated);
+        // Group dates are DERIVED from their work items, so moving a group
+        // shifts every item in it by the same day delta, then the group
+        // window is recomputed from the items.
+        $delta = (int) round((float) Carbon::parse($group->start_date)->startOfDay()
+            ->diffInDays(Carbon::parse($validated['start_date'])->startOfDay(), false));
+
+        // Clamp the shift so items stay inside the parent milestone window.
+        $delta = $this->clampDeltaToMilestone($group, null, $delta);
+
+        if ($delta !== 0) {
+            work_item::query()
+                ->where('group_id', $group->id)
+                ->whereNotNull('due_date')
+                ->update([
+                    'start_date' => DB::raw('DATE_ADD(COALESCE(start_date, due_date), INTERVAL '.$delta.' DAY)'),
+                    'due_date' => DB::raw('DATE_ADD(due_date, INTERVAL '.$delta.' DAY)'),
+                ]);
+        }
+
+        work_item::recomputeGroupSchedule($group->id);
 
         return redirect()->back()->with('success','Group moved successfully');
     }
@@ -291,9 +311,89 @@ class GanttController extends Controller
             'end_date' => 'required|date|after_or_equal:start_date',
         ]);
 
-        $group->update($validated);
+        // Group dates are DERIVED from their work items, so resizing a group
+        // moves only the boundary items (left edge: earliest starts, right
+        // edge: latest dues), then the window is recomputed.
+        $oldStart = Carbon::parse($group->start_date)->startOfDay();
+        $oldEnd = Carbon::parse($group->end_date)->startOfDay();
+        $newStart = Carbon::parse($validated['start_date'])->startOfDay();
+        $newEnd = Carbon::parse($validated['end_date'])->startOfDay();
 
-        return redirect()->back()->with('success', 'Group moved successfulyy');
+        // Left edge: shift the items currently sitting on the group's start.
+        if (! $newStart->equalTo($oldStart)) {
+            $delta = (int) round((float) $oldStart->diffInDays($newStart, false));
+            $delta = $this->clampDeltaToMilestone($group, 'start', $delta);
+
+            if ($delta !== 0) {
+                work_item::query()
+                    ->where('group_id', $group->id)
+                    ->whereRaw('COALESCE(start_date, due_date) = ?', [$group->start_date->toDateString()])
+                    ->update([
+                        'start_date' => DB::raw('DATE_ADD(COALESCE(start_date, due_date), INTERVAL '.$delta.' DAY)'),
+                        'due_date' => DB::raw('DATE_ADD(due_date, INTERVAL '.$delta.' DAY)'),
+                    ]);
+
+                work_item::recomputeGroupSchedule($group->id);
+            }
+        }
+
+        // Right edge: shift the items currently sitting on the group's end.
+        if (! $newEnd->equalTo($oldEnd)) {
+            $delta = (int) round((float) $oldEnd->diffInDays($newEnd, false));
+            $delta = $this->clampDeltaToMilestone($group, 'end', $delta);
+
+            if ($delta !== 0) {
+                work_item::query()
+                    ->where('group_id', $group->id)
+                    ->where('due_date', $group->end_date->toDateString())
+                    ->update([
+                        'start_date' => DB::raw('DATE_ADD(COALESCE(start_date, due_date), INTERVAL '.$delta.' DAY)'),
+                        'due_date' => DB::raw('DATE_ADD(due_date, INTERVAL '.$delta.' DAY)'),
+                    ]);
+
+                work_item::recomputeGroupSchedule($group->id);
+            }
+        }
+
+        return redirect()->back()->with('success', 'Group resized successfully');
+    }
+
+    /**
+     * Clamp a day-shift so the group's items stay inside the parent
+     * milestone window. $edge narrows the check to a single boundary
+     * ('start' for left-edge resizes, 'end' for right-edge ones, null for
+     * full moves).
+     */
+    private function clampDeltaToMilestone(work_item_groups $group, ?string $edge, int $delta): int
+    {
+        $milestone = $group->milestone;
+        if (! $milestone || $delta === 0) {
+            return $delta;
+        }
+
+        $items = work_item::query()->where('group_id', $group->id);
+        if (! $items->exists()) {
+            return $delta;
+        }
+
+        $msStart = $milestone->start_date?->copy()->startOfDay();
+        $msEnd = $milestone->target_date?->copy()->startOfDay();
+
+        if ($edge !== 'end' && $msStart) {
+            // earliest item start must remain >= milestone start
+            $min = Carbon::parse($items->min(DB::raw('COALESCE(start_date, due_date)')))->startOfDay();
+            $lower = (int) round((float) $min->diffInDays($msStart, false)); // msStart - min
+            $delta = max($delta, $lower);
+        }
+
+        if ($edge !== 'start' && $msEnd) {
+            // latest item due must remain <= milestone target
+            $max = Carbon::parse($items->max('due_date'))->startOfDay();
+            $upper = (int) round((float) $max->diffInDays($msEnd, false)); // msEnd - max
+            $delta = min($delta, $upper);
+        }
+
+        return $delta;
     }
 
     public function moveMilestone(Request $request, projects $project, milestones $milestone)

@@ -537,39 +537,32 @@ export function SetupStepPlan({
                                     />
                                 </div>
 
-                                <DateField
-                                    label="Start"
-                                    value={
-                                        group.start_date
-                                    }
-                                    onChange={(
-                                        value,
-                                    ) =>
-                                        updateGroup(
-                                            milestoneIndex,
-                                            groupIndex,
-                                            'start_date',
-                                            value,
-                                        )
-                                    }
-                                />
-
-                                <DateField
-                                    label="End"
-                                    value={
-                                        group.end_date
-                                    }
-                                    onChange={(
-                                        value,
-                                    ) =>
-                                        updateGroup(
-                                            milestoneIndex,
-                                            groupIndex,
-                                            'end_date',
-                                            value,
-                                        )
-                                    }
-                                />
+                                {/* Group dates are derived from their work
+                                    items — show the computed window
+                                    read-only instead of editable fields. */}
+                                <div className="space-y-1">
+                                    <span className="text-sm font-medium text-muted-foreground">
+                                        Schedule
+                                    </span>
+                                    <p className="text-sm">
+                                        {(() => {
+                                            const dated = group.work_items.filter(
+                                                (item) => item.start_date || item.due_date,
+                                            );
+                                            const start = dated
+                                                .map((item) => item.start_date || item.due_date)
+                                                .sort()
+                                                .at(0);
+                                            const end = dated
+                                                .map((item) => item.due_date)
+                                                .sort()
+                                                .at(-1);
+                                            return start && end
+                                                ? `${start} → ${end}`
+                                                : 'Determined by work item dates';
+                                        })()}
+                                    </p>
+                                </div>
                             </div>
 
                             <div className="space-y-2">

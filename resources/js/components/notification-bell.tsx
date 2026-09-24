@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+﻿import { useState, useEffect, useRef } from 'react';
 import { Link, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
@@ -124,11 +124,12 @@ export function NotificationBell() {
 
     function getTypeIcon(type: string) {
         switch (type) {
-            case 'assigned': return '👤';
-            case 'status_changed': return '🔄';
-            case 'DueDateReminder': return '⏰';
-            case 'comment_added': return '💬';
-            default: return '🔔';
+            case 'assigned': return 'ðŸ‘¤';
+            case 'status_changed': return 'ðŸ”„';
+            case 'DueDateReminder': return 'â°';
+            case 'password_reset': return '🔑';
+            case 'comment_added': return 'ðŸ’¬';
+            default: return 'ðŸ””';
         }
     }
 

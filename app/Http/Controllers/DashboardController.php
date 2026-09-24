@@ -76,6 +76,14 @@ class DashboardController extends Controller
         // Users created within the last 7 days (replaces the hardcoded subtitle)
         $newUsersWeek = User::where('created_at', '>=', now()->subWeek())->count();
 
+        $teamByPosition = DB::table('positions')->selectRaw('positions.name as name, count(users.id) as  total')
+        -> leftJoin('users', 'users.position_id', '=', 'positions.id')
+        ->groupBy('positions.id', 'positions.name')
+        ->orderByDesc('total')->get();
+
+        // Users with no position at all (the "Not assigned" chip).
+        $unassignedPositionCount = User::whereNull('position_id')->count();
+
         // Work items blocked by an unfinished predecessor (active only)
         $blockedWorkItems = DB::table('dependencies')
             ->join('work_items as pred', 'pred.id', '=', 'dependencies.predecessor_id')
@@ -151,6 +159,7 @@ class DashboardController extends Controller
                     'title' => $item->title,
                     'priority' => $item->priority,
                     'project' => $item->project?->name ?? 'N/A',
+                    'project_id' => $item->project?->id,
                     'status' => $item->status?->name ?? 'N/A',
                     'due_date' => $item->due_date?->format('Y-m-d'),
                 ];
@@ -195,8 +204,11 @@ class DashboardController extends Controller
                 ];
             });
 
-        // Recent login/logout activity across all users
-        $loginActivities = LoginActivity::with('user:id,username,fname,mname,lname,sname')
+        // Recent login/logout activity (admin-only consumers).
+        // Fetched only when the audit tab can actually render.
+        $auditVisible = $isAdmin;
+        $loginActivities = $auditVisible
+            ? LoginActivity::with('user:id,username,fname,mname,lname,sname')
             ->get()
             ->map(function ($activity) {
                 $user = $activity->user;
@@ -215,10 +227,12 @@ class DashboardController extends Controller
                 ];
             })
             ->values()
-            ->toBase();
+            ->toBase()
+            : collect();
 
         // Recent general activity logs (user creation, updates, etc.)
-        $generalActivities = activity_logs::with('user:id,username,fname,mname,lname,sname')
+        $generalActivities = $auditVisible
+            ? activity_logs::with('user:id,username,fname,mname,lname,sname')
             ->get()
             ->map(function ($log) {
                 $user = $log->user;
@@ -238,7 +252,8 @@ class DashboardController extends Controller
                 ];
             })
             ->values()
-            ->toBase();
+            ->toBase()
+            : collect();
 
         // Merge and sort activities by date. Audit activity is admin-only:
         // managers are owner-scoped and must not see company-wide logs.
@@ -311,6 +326,8 @@ class DashboardController extends Controller
             'recent_work_items' => $recentWorkItems,
             'projects_overview' => $projectsOverview,
             'team_distribution' => $teamDistribution,
+            'team_by_position' => $teamByPosition,
+            'unassigned_position_count' => $unassignedPositionCount,
             'recent_activities' => $recentActivities,
             'tasks_per_user' => $tasksPerUser,
             'timeline' => $timeline,

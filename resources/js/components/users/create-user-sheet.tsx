@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 import { type FormEvent, useState } from 'react';
 
 interface Role { id: number; name: string }
+interface Position { id: number; name: string }
 
 export interface SheetUserData {
     id: number;
@@ -17,17 +18,19 @@ export interface SheetUserData {
     sname: string;
     email: string;
     role_id: number | null;
+    position_id: number | null;
 }
 
 interface CreateUserSheetProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     roles: Role[];
+    positions: Position[];
     /** When provided, the sheet edits this user instead of creating a new one. */
     user?: SheetUserData | null;
 }
 
-export default function CreateUserSheet({ open, onOpenChange, roles, user }: CreateUserSheetProps) {
+export default function CreateUserSheet({ open, onOpenChange, roles, positions, user }: CreateUserSheetProps) {
     const editing = Boolean(user);
     const [username, setUserName] = useState(user?.username ?? '');
     const [fname, setFirstName] = useState(user?.fname ?? '');
@@ -38,6 +41,7 @@ export default function CreateUserSheet({ open, onOpenChange, roles, user }: Cre
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
     const [roleId, setRoleId] = useState(user?.role_id ? String(user.role_id) : '');
+    const [positionId, setPositionId] = useState(user?.position_id ? String(user.position_id) : '');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
@@ -50,6 +54,7 @@ export default function CreateUserSheet({ open, onOpenChange, roles, user }: Cre
             password: password || undefined,
             password_confirmation: passwordConfirmation || undefined,
             role_id: roleId,
+            position_id: positionId === '' ? null : positionId,
         };
 
         const options = {
@@ -190,7 +195,28 @@ export default function CreateUserSheet({ open, onOpenChange, roles, user }: Cre
                         />
                     </div>
 
-                    {/* Role */}
+                    {/* Position */}
+                    <div className="space-y-2">
+                        <Label htmlFor="position">Position</Label>
+                        <Select value={positionId} onValueChange={setPositionId}>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select a position (optional)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">No position</SelectItem>
+                                {positions.map((position) => (
+                                    <SelectItem key={position.id} value={String(position.id)}>
+                                        {position.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        {errors.position_id && (
+                            <p className="text-sm text-red-600">{errors.position_id}</p>
+                        )}
+                    </div>
+
+                {/* Role */}
                     <div className="space-y-2">
                         <Label htmlFor="role">Role</Label>
                         <Select value={roleId} onValueChange={setRoleId}>

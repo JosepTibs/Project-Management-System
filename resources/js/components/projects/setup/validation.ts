@@ -142,59 +142,8 @@ export function collectSetupIssues(input: SetupValidationInput): SetupIssue[] {
                     });
                 }
 
-                if (
-                    !group.start_date ||
-                    !group.end_date
-                ) {
-                    issues.push({
-                        key: `g-${milestoneIndex}-${groupIndex}-dates`,
-                        step: 3,
-                        severity: 'warning',
-                        message: `${groupLabel} has no complete date range yet.`,
-                    });
-                }
-
-                if (
-                    group.start_date &&
-                    group.end_date &&
-                    group.start_date >
-                        group.end_date
-                ) {
-                    issues.push({
-                        key: `g-${milestoneIndex}-${groupIndex}-range`,
-                        step: 3,
-                        severity: 'error',
-                        message: `${groupLabel} has an invalid date range.`,
-                    });
-                }
-
-                if (
-                    milestone.start_date &&
-                    group.start_date &&
-                    group.start_date <
-                        milestone.start_date
-                ) {
-                    issues.push({
-                        key: `g-${milestoneIndex}-${groupIndex}-before-milestone`,
-                        step: 3,
-                        severity: 'warning',
-                        message: `${groupLabel} starts before ${milestoneLabel}.`,
-                    });
-                }
-
-                if (
-                    milestone.target_date &&
-                    group.end_date &&
-                    group.end_date >
-                        milestone.target_date
-                ) {
-                    issues.push({
-                        key: `g-${milestoneIndex}-${groupIndex}-after-milestone`,
-                        step: 3,
-                        severity: 'warning',
-                        message: `${groupLabel} ends after ${milestoneLabel}.`,
-                    });
-                }
+                // Group dates are derived from their work items, so there are
+                // no group-level date fields to validate.
 
                 group.work_items.forEach(
                     (item, workItemIndex) => {
@@ -224,34 +173,6 @@ export function collectSetupIssues(input: SetupValidationInput): SetupIssue[] {
                                 step: 3,
                                 severity: 'error',
                                 message: `${label} has an invalid date range.`,
-                            });
-                        }
-
-                        if (
-                            group.start_date &&
-                            item.start_date &&
-                            item.start_date <
-                                group.start_date
-                        ) {
-                            issues.push({
-                                key: `w-${milestoneIndex}-${groupIndex}-${workItemIndex}-before-group`,
-                                step: 3,
-                                severity: 'warning',
-                                message: `${label} starts before ${groupLabel}.`,
-                            });
-                        }
-
-                        if (
-                            group.end_date &&
-                            item.due_date &&
-                            item.due_date >
-                                group.end_date
-                        ) {
-                            issues.push({
-                                key: `w-${milestoneIndex}-${groupIndex}-${workItemIndex}-after-group`,
-                                step: 3,
-                                severity: 'warning',
-                                message: `${label} ends after ${groupLabel}.`,
                             });
                         }
                     },

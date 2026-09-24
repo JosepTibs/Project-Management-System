@@ -1,8 +1,8 @@
-import { Head, Link, router } from '@inertiajs/react';
+﻿import { Head, Link, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Bell, CheckCheck, ArrowLeft, ChevronLeft, ChevronRight, Check, UserPlus, RefreshCw, Clock, MessageSquare, Loader2} from 'lucide-react';
+import { Bell, CheckCheck, ArrowLeft, ChevronLeft, ChevronRight, Check, UserPlus, RefreshCw, Clock, MessageSquare, KeyRound, Loader2} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
 import { useState, useEffect } from 'react';
@@ -51,6 +51,7 @@ const TYPE_ICON: Record<string, { icon: typeof Bell; className: string }> = {
     StatusChanged: { icon: RefreshCw, className: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400' },
     DueDateReminder: { icon: Clock, className: 'bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-400' },
     CommentAdded: { icon: MessageSquare, className: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400' },
+    PasswordResetRequested: { icon: KeyRound, className: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400' },
 };
 
 function TypeIcon({ type }: { type: string }) {
@@ -182,7 +183,7 @@ export default function NotificationsIndex({
                     )}
                 </div>
 
-                {/* Filter tabs — merged directly onto the list container, no extra divider */}
+                {/* Filter tabs â€” merged directly onto the list container, no extra divider */}
                 <div
                     className={cn(
                         'overflow-hidden rounded-lg border border-sidebar-border/70 transition-opacity',
@@ -271,7 +272,7 @@ export default function NotificationsIndex({
                                                 <span>{notification.created_at}</span>
                                                 {notification.data.project_name && (
                                                     <>
-                                                        <span>•</span>
+                                                        <span>â€¢</span>
                                                         <span className="truncate">{notification.data.project_name}</span>
                                                     </>
                                                 )}
@@ -309,7 +310,7 @@ export default function NotificationsIndex({
                             if (link.label === '...') {
                                 return (
                                     <span key={index} className="px-2 text-sm text-muted-foreground">
-                                        …
+                                        â€¦
                                     </span>
                                 );
                             }

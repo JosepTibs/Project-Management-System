@@ -1,9 +1,8 @@
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     AlertTriangle,
     ArrowLeft,
@@ -69,6 +68,9 @@ export function SetupStepTeam({
     roleFilter,
     setRoleFilter,
     uniqueRoles,
+    positionFilter,
+    setPositionFilter,
+    uniquePositions,
     filteredUsers,
     toggleUser,
     toggleManager,
@@ -138,50 +140,46 @@ export function SetupStepTeam({
                                 }
                             />
 
-                            {uniqueRoles.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant={
-                                            roleFilter ===
-                                            'all'
-                                                ? 'default'
-                                                : 'outline'
-                                        }
-                                        onClick={() =>
-                                            setRoleFilter(
-                                                'all',
-                                            )
-                                        }
-                                    >
-                                        All
-                                    </Button>
-
-                                    {uniqueRoles.map(
-                                        (role) => (
-                                            <Button
-                                                key={role}
-                                                type="button"
-                                                size="sm"
-                                                variant={
-                                                    roleFilter ===
-                                                    role
-                                                        ? 'default'
-                                                        : 'outline'
-                                                }
-                                                onClick={() =>
-                                                    setRoleFilter(
-                                                        role,
-                                                    )
-                                                }
-                                                className="capitalize"
-                                            >
+                            <div className="grid grid-cols-2 gap-2">
+                                <Select
+                                    value={roleFilter}
+                                    onValueChange={setRoleFilter}
+                                >
+                                    <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="All roles" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All roles</SelectItem>
+                                        {uniqueRoles.map((role) => (
+                                            <SelectItem key={role} value={role}>
                                                 {role}
-                                            </Button>
-                                        ),
-                                    )}
-                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+
+                                <Select
+                                    value={positionFilter}
+                                    onValueChange={setPositionFilter}
+                                >
+                                    <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="All positions" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All positions</SelectItem>
+                                        {uniquePositions.map((position) => (
+                                            <SelectItem key={position} value={position}>
+                                                {position}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {(roleFilter !== 'all' || positionFilter !== 'all') && (
+                                <p className="text-muted-foreground text-xs">
+                                    Showing {filteredUsers.length} of {allUsers.length}
+                                </p>
                             )}
 
                             {isAdmin && (
@@ -205,11 +203,11 @@ export function SetupStepTeam({
                                                 );
 
                                             return (
-                                                <button
+                                                <div
                                                     key={
                                                         user.id
                                                     }
-                                                    type="button"
+                                                    
                                                     onClick={() =>
                                                         toggleUser(
                                                             user.id,
@@ -255,6 +253,15 @@ export function SetupStepTeam({
                                                         </Badge>
                                                     )}
 
+                                                    {user.position && (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="capitalize ml-1"
+                                                        >
+                                                            {user.position}
+                                                        </Badge>
+                                                    )}
+
                                                     {isAdmin && selected && (
                                                         <button
                                                             type="button"
@@ -272,7 +279,7 @@ export function SetupStepTeam({
                                                             {isManager(user.id) ? 'Manager' : 'Mark manager'}
                                                         </button>
                                                     )}
-                                                </button>
+                                                </div>
                                             );
                                         },
                                     )

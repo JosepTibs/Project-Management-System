@@ -30,6 +30,8 @@ interface UserData {
     email: string;
     role: Role | null;
     role_id?: number | null;
+    position: Role | null;
+    position_id?: number | null;
     created_at: string;
     projects: Project[];
 }
@@ -37,6 +39,7 @@ interface UserData {
 interface ShowUserPageProps extends Record<string, unknown> {
     user: UserData;
     roles: Role[];
+    positions: Role[];
 }
 
 function formatFullName(user: UserData) {
@@ -45,7 +48,7 @@ function formatFullName(user: UserData) {
 }
 
 export default function ShowUser() {
-    const { user, roles } = usePage<ShowUserPageProps>().props;
+    const { user, roles, positions } = usePage<ShowUserPageProps>().props;
     const fullName = formatFullName(user);
     const [editOpen, setEditOpen] = useState(false);
     const [createOpen, setCreateOpen] = useState(false);
@@ -61,6 +64,7 @@ export default function ShowUser() {
         sname: user.sname,
         email: user.email,
         role_id: user.role_id ?? user.role?.id ?? null,
+        position_id: user.position_id ?? user.position?.id ?? null,
     };
 
     const breadcrumbs: BreadcrumbItem[] = [
@@ -89,6 +93,7 @@ export default function ShowUser() {
                 sname: user.sname,
                 email: user.email,
                 role_id: user.role?.id ?? null,
+                position_id: user.position?.id ?? null,
             });
             setCreateOpen(true);
         }}
@@ -104,6 +109,7 @@ export default function ShowUser() {
     open={createOpen}
     onOpenChange={setCreateOpen}
     roles={roles}
+    positions={positions}
     user={editingUser}
 />
 

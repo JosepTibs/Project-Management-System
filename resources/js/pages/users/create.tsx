@@ -25,12 +25,18 @@ interface Role {
     name: string;
 }
 
+interface Position {
+    id: number;
+    name: string;
+}
+
 interface CreateUserPageProps extends Record<string, unknown> {
     roles: Role[];
+    positions: Position[];
 }
 
 export default function CreateUser() {
-    const { roles } = usePage<CreateUserPageProps>().props;
+    const { roles, positions } = usePage<CreateUserPageProps>().props;
     const [username, setUserName] = useState('');
     const [fname, setFirstName] = useState('');
     const [mname, setMiddleName] = useState('');
@@ -40,6 +46,7 @@ export default function CreateUser() {
     const [password, setPassword] = useState('');
     const [passwordConfirmation, setPasswordConfirmation] = useState('');
     const [roleId, setRoleId] = useState('');
+    const [positionId, setPositionId] = useState('');
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
@@ -57,6 +64,7 @@ export default function CreateUser() {
             password,
             password_confirmation: passwordConfirmation,
             role_id: roleId,
+            position_id: positionId === '' ? null : positionId,
         }, {
             onError: (errs) => {
                 setErrors(errs);
@@ -194,6 +202,26 @@ export default function CreateUser() {
                                 />
                             </div>
 
+                            {/* Position */}
+                            <div className="space-y-2">
+                                <Label htmlFor="position">Position</Label>
+                                <Select value={positionId} onValueChange={setPositionId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a position (optional)" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No position</SelectItem>
+                                        {positions.map((position) => (
+                                            <SelectItem key={position.id} value={String(position.id)}>
+                                                {position.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {errors.position_id && (
+                                    <p className="text-sm text-red-600">{errors.position_id}</p>
+                                )}
+                            </div>
                             {/* Role */}
                             <div className="space-y-2">
                                 <Label htmlFor="role">Role</Label>

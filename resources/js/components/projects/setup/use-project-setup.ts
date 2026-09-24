@@ -68,6 +68,7 @@ export function useProjectSetup({
     const [managerIds, setManagerIds] = useState<number[]>([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
+    const [positionFilter, setPositionFilter] = useState('all');
 
     const [milestones, setMilestones] = useState<NestedMilestone[]>(initialMilestones);
 
@@ -151,6 +152,7 @@ export function useProjectSetup({
 
             setSearchTerm('');
             setRoleFilter('all');
+            setPositionFilter('all');
             setErrorMessage(null);
 
             prefixTouchedByUser.current = false;
@@ -195,6 +197,12 @@ export function useProjectSetup({
         ),
     ];
 
+    const uniquePositions = [
+        ...new Set(
+            allUsers.map((user) => user.position).filter((position): position is string => Boolean(position)),
+        )
+    ];
+
     const filteredUsers: UserOption[] = allUsers.filter((user) => {
         const search = searchTerm.trim().toLowerCase();
 
@@ -205,7 +213,10 @@ export function useProjectSetup({
 
         const matchesRole = roleFilter === 'all' || user.role === roleFilter;
 
-        return matchesSearch && matchesRole;
+        const matchesPosition = positionFilter === 'all' || user.position === positionFilter;
+
+        return matchesSearch && matchesRole && matchesPosition;
+        
     });
 
     const totalGroups = milestones.reduce(
@@ -612,6 +623,9 @@ export function useProjectSetup({
         setRoleFilter,
         uniqueRoles,
         filteredUsers,
+        positionFilter,
+        setPositionFilter,
+        uniquePositions,
         
         // plan
         milestones,

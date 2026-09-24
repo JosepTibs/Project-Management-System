@@ -255,8 +255,14 @@ export default function ProjectSetupSheetRefactored({
         setProcessing(true);
 
         const options = {
-            onError: () =>
-                setProcessing(false),
+            onError: (errors: Record<string, string> = {}) => {
+                const messages = Object.values(errors).filter(Boolean);
+                setErrorMessage(
+                    messages.length > 0
+                        ? messages.join(' · ')
+                        : 'Could not save — the server rejected the request. Check your permissions and try again.',
+                );
+            },
 
             onFinish: () =>
                 setProcessing(false),

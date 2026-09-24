@@ -26,6 +26,7 @@ class Notification extends DatabaseNotification
             'WorkItemCompleted' => 'Completed',
             'AdminDigest' => 'Daily Digest',
             'CommentAdded' => 'New Comment',
+            'PasswordResetRequested' => 'Password Reset',
             default => 'Notification',
         };
     }

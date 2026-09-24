@@ -3,6 +3,8 @@ import { router } from '@inertiajs/react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Link2, Link2Off, ChevronRight, ChevronDown, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import AddDependencyDialog from '@/components/dependencies/add-dependency-dialog';
+import DependencyLinkPopover, { type PendingLink } from '@/components/dependencies/dependency-link-popover';
+import { DEPENDENCY_TYPE_ORDER, dependencyStyleOf, inferDependencyType, type DependencyAnchor } from '@/components/dependencies/dependency-style';
 import { confirmRequest } from '@/components/confirm-dialog';
 
 
@@ -359,6 +361,8 @@ interface DragState {
 interface DependencyPreview {
     fromTaskId: string;
     toTaskId: string | null;
+    /** Which end of the predecessor bar the drag started from. */
+    fromEdge: DependencyAnchor;
     startX: number;
     startY: number;
     x: number;
@@ -380,6 +384,8 @@ export default function InteractiveGanttChart({
     const [dependencies, setDependencies] = useState<Dependency[]>([]);
     const [dragState, setDragState] = useState<DragState | null>(null);
     const [depPreview, setDepPreview] = useState<DependencyPreview | null>(null);
+    // Set when a link drag is dropped on another task; drives the confirm popover.
+    const [pendingLink, setPendingLink] = useState<PendingLink | null>(null);
     const [showDependencies, setShowDependencies] = useState(true);
     const [addDepOpen, setAddDepOpen] = useState(false);
     const [collapsedMilestones, setCollapsedMilestones] = useState<Set<number>>(new Set());
@@ -722,6 +728,33 @@ export default function InteractiveGanttChart({
         return tree;
     }, [items]);
 
+    // Rows actually visible on screen, in render order. Descendants of a
+    // collapsed milestone/group are excluded, so the dependency overlay can
+    // hide arrows pointing at rows that are collapsed away.
+    const { visibleRows, visibleIndexById } = useMemo(() => {
+        const rows: TimelineItem[] = [];
+        const indexById = new Map<string, number>();
+
+        for (const milestone of itemsTree) {
+            rows.push(milestone);
+            indexById.set(milestone.id, rows.length - 1);
+            if (milestone.collapsed) continue;
+
+            for (const group of milestone.children) {
+                rows.push(group);
+                indexById.set(group.id, rows.length - 1);
+                if (group.collapsed) continue;
+
+                for (const task of group.children) {
+                    rows.push(task);
+                    indexById.set(task.id, rows.length - 1);
+                }
+            }
+        }
+
+        return { visibleRows: rows, visibleIndexById: indexById };
+    }, [itemsTree]);
+
     // NOTE: this memo uses BASE_UNIT_WIDTH (a fixed constant) rather than the
     // dynamic UNIT_WIDTH, since UNIT_WIDTH below depends on totalUnits and would
     // otherwise create a circular "used before declaration" dependency.
@@ -930,9 +963,9 @@ export default function InteractiveGanttChart({
         []
     );
 
-    // Handle dependency drag start from task right edge handle
+    // Handle dependency drag start from a task bar's Start (left) or Finish (right) anchor
     const handleDepDragStart = useCallback(
-        (e: React.MouseEvent, item: TimelineItem) => {
+        (e: React.MouseEvent, item: TimelineItem, fromEdge: DependencyAnchor = "finish") => {
             if (readOnly || item.type !== "task") return;
             e.preventDefault();
             e.stopPropagation();
@@ -940,13 +973,14 @@ export default function InteractiveGanttChart({
             setDepPreview({
                 fromTaskId: item.id,
                 toTaskId: null,
+                fromEdge,
                 startX: e.clientX,
                 startY: e.clientY,
                 x: e.clientX,
                 y: e.clientY,
             });
         },
-        []
+        [readOnly]
     );
 
 
@@ -1033,65 +1067,51 @@ export default function InteractiveGanttChart({
     }
         // Handle dependency creation
         if (depPreview) {
-            // Find which task bar we dropped on
-            const dropTask = items.find((item) => {
-                if (item.type !== "task") return false;
-                const t = item.id;
-                if (t === depPreview.fromTaskId) return false;
+            // Find which task bar we dropped on, and which end of it we hit.
+            let dropTask: TimelineItem | null = null;
+            let toEdge: DependencyAnchor = "start";
 
-                // Find if the drop position overlaps the task bar
-                const rect = containerRef.current?.querySelector(`[data-task-id="${t}"]`)?.getBoundingClientRect();
-                if (!rect) return false;
+            for (const item of items) {
+                if (item.type !== "task") continue;
+                if (item.id === depPreview.fromTaskId) continue;
 
-                // Use stored client coordinates for hit testing
-                const containerRect = containerRef.current?.getBoundingClientRect();
-                if (!containerRect) return false;
+                const rect = containerRef.current
+                    ?.querySelector(`[data-task-id="${item.id}"]`)
+                    ?.getBoundingClientRect();
+                if (!rect) continue;
 
-                // Convert preview x (container-relative) to client x
-                const clientX = depPreview.x; 
-                const clientY = depPreview.y;
+                const inside =
+                    depPreview.x >= rect.left &&
+                    depPreview.x <= rect.right &&
+                    depPreview.y >= rect.top &&
+                    depPreview.y <= rect.bottom;
 
-                return (
-                    clientX >= rect.left &&
-                    clientX <= rect.right &&
-                    clientY >= rect.top &&
-                    clientY <= rect.bottom
-                );
-            });
+                if (inside) {
+                    dropTask = item;
+                    // Landing on the left half means the Start anchor;
+                    // the right half means the Finish anchor.
+                    toEdge = depPreview.x < rect.left + rect.width / 2 ? "start" : "finish";
+                    break;
+                }
+            }
 
             if (dropTask) {
-                const fromId = depPreview.fromTaskId.replace("task-", "");
-                const toId = dropTask.id.replace("task-", "");
+                const predecessorId = Number(depPreview.fromTaskId.replace("task-", ""));
+                const successorId = Number(dropTask.id.replace("task-", ""));
+                const predecessorTitle =
+                    items.find((i) => i.id === depPreview.fromTaskId)?.name ?? "Task";
 
-                router.post(
-                    `/projects/${projectId}/dependencies`,
-                    {
-                        predecessor_id: fromId,
-                        successor_id: toId,
-                        type: "finish_to_start",
-                        lag: 0,
-                    },
-                    {
-                        preserveScroll: true,
-                        preserveState: true,
-                        onSuccess: () => {
-                            // Refresh dependencies
-                            fetch(`/projects/${projectId}/dependencies`, {
-                                headers: { Accept: 'application/json' },
-                            })
-                                .then((res) => res.json())
-                                .then((data) => {
-                                    if (data.success) {
-                                        setDependencies(data.dependencies);
-                                    }
-                                });
-                        },
-                        onError: (errors) => {
-                            console.error('Failed to create dependency:', errors);
-                        },
-                    }
-                );
+                setPendingLink({
+                    predecessorId,
+                    successorId,
+                    predecessorTitle,
+                    successorTitle: dropTask.name,
+                    inferredType: inferDependencyType(depPreview.fromEdge, toEdge),
+                    x: depPreview.x,
+                    y: depPreview.y,
+                });
             }
+
             setDepPreview(null);
             return;
         }
@@ -1456,6 +1476,26 @@ export default function InteractiveGanttChart({
                     >
                         {showDependencies ? <Link2 className="h-3.5 w-3.5 text-blue-600" /> : <Link2Off className="h-3.5 w-3.5" />}
                     </button>
+                    {/* Legend: what each dependency color/line means */}
+                    {showDependencies && (
+                        <div className="flex items-center gap-2 rounded border border-input bg-muted/40 px-2 h-7">
+                            {DEPENDENCY_TYPE_ORDER.map((t) => {
+                                const s = dependencyStyleOf(t);
+                                const swatch =
+                                    s.dash === 'none'
+                                        ? { backgroundColor: s.color }
+                                        : { backgroundImage: "repeating-linear-gradient(90deg, " + s.color + " 0 3px, transparent 3px 6px)" };
+                                return (
+                                    <span key={t} className="flex items-center gap-1" title={s.description}>
+                                        <span className="inline-block h-0.5 w-4" style={swatch} />
+                                        <span className="text-[10px] font-semibold" style={{ color: s.color }}>
+                                            {s.short}
+                                        </span>
+                                    </span>
+                                );
+                            })}
+                        </div>
+                    )}
                     {!readOnly && (
                     <button
                         onClick={() => setAddDepOpen(true)}
@@ -1654,7 +1694,7 @@ export default function InteractiveGanttChart({
                                                                 </span>
                                                             )}
                                                             <div
-                                                                className={`relative h-7 rounded-md overflow-hidden cursor-grab active:cursor-grabbing select-none
+                                                                className={`group relative h-7 rounded-md cursor-grab active:cursor-grabbing select-none
                                                                 bg-gradient-to-r from-indigo-600 to-indigo-500
                                                                 shadow-md hover:shadow-lg
                                                                 hover:from-indigo-700 hover:to-indigo-600
@@ -1662,11 +1702,14 @@ export default function InteractiveGanttChart({
                                                                 ${isDragging && dragState?.mode === "move" ? "shadow-xl ring-2 ring-indigo-400/50" : ""}
                                                                 ${isDragging && dragState?.mode !== "move" ? "ring-2 ring-amber-400/60" : ""}`}
                                                             >
-                                                                {/* Progress fill */}
-                                                                <div
-                                                                    className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-800/40 to-indigo-700/20 transition-all duration-500 pointer-events-none"
-                                                                    style={{ width: `${item.progress}%` }}
-                                                                />
+                                                                {/* Progress fill (clipped by its own layer so the
+                                                                    bar itself can overflow to show link anchors) */}
+                                                                <div className="absolute inset-0 overflow-hidden rounded-md pointer-events-none">
+                                                                    <div
+                                                                        className="absolute inset-y-0 left-0 bg-gradient-to-r from-indigo-800/40 to-indigo-700/20 transition-all duration-500"
+                                                                        style={{ width: `${item.progress}%` }}
+                                                                    />
+                                                                </div>
                                                                 {/* Label */}
                                                                 {layout.barWidth > 50 && (
                                                                     <span className="relative z-10 flex items-center w-full h-full px-2 text-[11px] font-semibold text-white truncate pointer-events-none">
@@ -1685,14 +1728,23 @@ export default function InteractiveGanttChart({
                                                                     onMouseDown={(e) => handleDragStart(e, item, "resize-end")}
                                                                 />
 
-                                                                {/* Dependency connection handle */}
+                                                                {/* Link anchors: left = Start, right = Finish.
+                                                                    Drag either one onto another task to link them. */}
                                                                 <div
                                                                     style={readOnly ? { display: "none" } : undefined}
-                                                                    className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-20 flex items-center justify-center h-5 w-5 rounded-full border border-indigo-300 bg-white/90 text-indigo-600 cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                                                    onMouseDown={(e) => handleDepDragStart(e, item)}
-                                                                    title="Drag to create dependency"
+                                                                    className="absolute -left-2.5 top-1/2 -translate-y-1/2 z-30 flex h-5 w-5 items-center justify-center rounded-full border-2 border-emerald-400 bg-white text-emerald-600 cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                                                    onMouseDown={(e) => handleDepDragStart(e, item, "start")}
+                                                                    title="Drag from Start to link"
                                                                 >
-                                                                    <Link2 className="h-3 w-3" />
+                                                                    <span className="text-[9px] font-bold leading-none">S</span>
+                                                                </div>
+                                                                <div
+                                                                    style={readOnly ? { display: "none" } : undefined}
+                                                                    className="absolute -right-2.5 top-1/2 -translate-y-1/2 z-30 flex h-5 w-5 items-center justify-center rounded-full border-2 border-indigo-400 bg-white text-indigo-600 cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                                                    onMouseDown={(e) => handleDepDragStart(e, item, "finish")}
+                                                                    title="Drag from Finish to link"
+                                                                >
+                                                                    <span className="text-[9px] font-bold leading-none">F</span>
                                                                 </div>
                                                             </div>
                                                         </>
@@ -1812,19 +1864,23 @@ export default function InteractiveGanttChart({
                                 style={{ position: 'relative', overflow: 'hidden' }}
                             >
                                 {dependencies.map((dep) => {
-                                    const pred = items.find((i) => i.id === `task-${dep.predecessor_id}`);
-                                    const succ = items.find((i) => i.id === `task-${dep.successor_id}`);
-                                    if (!pred || !succ) return null;
+                                    // Look up the VISIBLE row index of each endpoint.
+                                    // Rows hidden by a collapsed milestone/group are
+                                    // absent from the map, which hides their arrows.
+                                    const predRowIndex = visibleIndexById.get(`task-${dep.predecessor_id}`);
+                                    const succRowIndex = visibleIndexById.get(`task-${dep.successor_id}`);
+                                    if (predRowIndex === undefined || succRowIndex === undefined) return null;
+                                    const pred = visibleRows[predRowIndex];
+                                    const succ = visibleRows[succRowIndex];
 
+                                    const style = dependencyStyleOf(dep.type);
                                     const predLayout = getItemLayout(pred);
                                     const succLayout = getItemLayout(succ);
 
-                                    // Find row indices for y positions
-                                    const predRowIndex = items.findIndex((i) => i.id === pred.id);
-                                    const succRowIndex = items.findIndex((i) => i.id === succ.id);
-                                    if (predRowIndex === -1 || succRowIndex === -1) return null;
-
-                                    const x1 = predLayout.barLeft + predLayout.barWidth + 4;
+                                    // Uniform look: every arrow runs from the
+                                    // predecessor's finish edge to the successor's
+                                    // start edge, regardless of dependency type.
+                                    const x1 = predLayout.barLeft + predLayout.barWidth + 2;
                                     const x2 = succLayout.barLeft - 2;
 
                                     const rowCenter = ROW_HEIGHT / 2;
@@ -1838,7 +1894,7 @@ export default function InteractiveGanttChart({
                                     let path = '';
 
                                     if (x2 < x1 + BUFFER) {
-                                        // Backtrack case: Successor starts before Predecessor finishes
+                                        // Backtrack: successor starts before predecessor ends
                                         const midY = (y1 + y2) / 2;
                                         path = `M ${x1} ${y1} ` +
                                             `L ${x1 + BUFFER} ${y1} ` +
@@ -1847,9 +1903,12 @@ export default function InteractiveGanttChart({
                                             `L ${x2 - BUFFER} ${y2} ` +
                                             `L ${x2} ${y2}`;
                                     } else {
-                                        // Forward case
+                                        // Forward: single elbow at the predecessor's x-buffer
                                         path = `M ${x1} ${y1} L ${x1 + BUFFER} ${y1} L ${x1 + BUFFER} ${y2} L ${x2} ${y2}`;
                                     }
+
+                                    const chipX = (x1 + x2) / 2;
+                                    const chipY = Math.abs(y1 - y2) < 12 ? y1 - 10 : (y1 + y2) / 2;
 
                                     return (
                                         <g
@@ -1858,20 +1917,54 @@ export default function InteractiveGanttChart({
                                             onMouseEnter={() => (deleteDepHoverRef.current = true)}
                                             className="cursor-pointer"
                                         >
+                                            {/* Invisible fat hit path so the 1.5px line is clickable */}
                                             <path
                                                 d={path}
                                                 fill="none"
-                                                stroke="#6366f1"
-                                                strokeWidth={1.5}
-                                                strokeDasharray={dep.type === "finish_to_start" ? "none" : "4 3"}
+                                                stroke="transparent"
+                                                strokeWidth={12}
                                                 className="cursor-pointer pointer-events-auto"
                                             />
-                                            {/* Arrowhead */}
+                                            <path
+                                                d={path}
+                                                fill="none"
+                                                stroke={style.color}
+                                                strokeWidth={1.5}
+                                                strokeDasharray={style.dash}
+                                                className="pointer-events-none"
+                                            />
+                                            {/* Arrowhead — always points right (finish → start) */}
                                             <polygon
                                                 points={`${x2},${y2} ${x2 - 6},${y2 - 3} ${x2 - 6},${y2 + 3}`}
-                                                fill="#6366f1"
+                                                fill={style.color}
+                                                className="pointer-events-none"
                                             />
-                                            <title>{`${dep.predecessor.title} → ${dep.successor.title} (${dep.type.replace(/_/g, " ")})`}</title>
+                                            {/* Type + lag chip at the elbow */}
+                                            <g className="pointer-events-none">
+                                                <rect
+                                                    x={chipX - 21}
+                                                    y={chipY - 8}
+                                                    width={42}
+                                                    height={15}
+                                                    rx={7.5}
+                                                    fill="var(--background, #ffffff)"
+                                                    stroke={style.color}
+                                                    strokeWidth={1}
+                                                    opacity={0.95}
+                                                />
+                                                <text
+                                                    x={chipX}
+                                                    y={chipY + 3}
+                                                    textAnchor="middle"
+                                                    fontSize={9}
+                                                    fontWeight={700}
+                                                    fill={style.color}
+                                                >
+                                                    {style.short}
+                                                    {dep.lag && dep.lag > 0 ? ` +${dep.lag}d` : ''}
+                                                </text>
+                                            </g>
+                                            <title>{`${dep.predecessor.title} → ${dep.successor.title} (${style.label}${dep.lag && dep.lag > 0 ? `, +${dep.lag}d` : ''})`}</title>
                                         </g>
                                     );
                                 })}
@@ -1917,6 +2010,12 @@ export default function InteractiveGanttChart({
                     </svg>
                 </div>
             )}
+<DependencyLinkPopover
+                link={pendingLink}
+                projectId={projectId}
+                onClose={() => setPendingLink(null)}
+                onCreated={refreshDependencies}
+            />
 <AddDependencyDialog
                 open={addDepOpen}
                 onOpenChange={setAddDepOpen}

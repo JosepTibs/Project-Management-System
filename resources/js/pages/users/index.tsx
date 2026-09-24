@@ -35,15 +35,23 @@ interface UserItem {
     email: string;
     email_verified_at: string | null;
     role: { id: number; name: string } | null;
+    position: { id: number; name: string } | null;
     created_at: string;
+}
+
+interface Position {
+    id: number;
+    name: string;
 }
 
 interface UsersPageProps extends Record<string, unknown> {
     users: UserItem[];
     roles: Role[];
+    positions: Position[];
     filters: {
         search: string | null;
         role: string | null;
+        position_id: string | null;
     };
     auth?: {
         user?: {
@@ -82,26 +90,34 @@ const globalFilterFn: FilterFn<UserItem> = (row, columnId, filterValue: string) 
         fullName.toLowerCase().includes(search) ||
         user.username.toLowerCase().includes(search)||
         user.email.toLowerCase().includes(search) ||
-        (user.role?.name ?? '').toLowerCase().includes(search)
+        (user.role?.name ?? '').toLowerCase().includes(search) ||
+        (user.position?.name ?? '').toLowerCase().includes(search)
     );
 };
 
 const columnHelper = createColumnHelper<UserItem>();
 
 export default function UsersIndex() {
-    const { users, roles, filters, auth } = usePage<UsersPageProps>().props;
+    const { users, roles, positions, filters, auth } = usePage<UsersPageProps>().props;
     const canDeleteUsers = auth?.roles?.includes('superadmin') ?? false;
     const [globalFilter, setGlobalFilter] = useState(filters.search ?? '');
     const [roleFilter, setRoleFilter] = useState(filters.role ?? '');
+    const [positionFilter, setPositionFilter] = useState(filters.position_id ?? '');
     const [sorting, setSorting] = useState<SortingState>([]);
     const [createOpen, setCreateOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<SheetUserData | null>(null); 
 
-    // Apply role filter to data
+    // Apply role and position filters to data
     const filteredData = useMemo(() => {
-        if (!roleFilter || roleFilter ==='all') return users;
-        return users.filter((user) => user.role?.id === Number(roleFilter));
-    }, [users, roleFilter]);
+        let data = users;
+        if (roleFilter && roleFilter !== 'all') {
+            data = data.filter((user) => user.role?.id === Number(roleFilter));
+        }
+        if (positionFilter && positionFilter !== 'all') {
+            data = data.filter((user) => user.position?.id === Number(positionFilter));
+        }
+        return data;
+    }, [users, roleFilter, positionFilter]);
 
     const columns = useMemo(
         () => [
@@ -195,6 +211,18 @@ export default function UsersIndex() {
                 },
                 enableSorting: false,
             }),
+            columnHelper.accessor('position', {
+                header: 'Position',
+                cell: ({ getValue }) => {
+                    const position = getValue();
+                    return position ? (
+                        <Badge variant="outline">{position.name}</Badge>
+                    ) : (
+                        <span className="text-muted-foreground">—</span>
+                    );
+                },
+                enableSorting: false,
+            }),
             columnHelper.accessor('email_verified_at', {
                 header: 'Status',
                 cell: ({ getValue }) => {
@@ -249,6 +277,7 @@ export default function UsersIndex() {
                                         sname: user.sname,
                                         email: user.email,
                                         role_id: user.role?.id ?? null,
+                                        position_id: user.position?.id ?? null,
                                     });
                                     setCreateOpen(true);
                                 }}>
@@ -321,6 +350,7 @@ export default function UsersIndex() {
     open={createOpen}
     onOpenChange={setCreateOpen}
     roles={roles}
+    positions={positions}
     user={editingUser}
 />
 
@@ -358,6 +388,21 @@ export default function UsersIndex() {
                                         {roles.map((role) => (
                                             <SelectItem key={role.id} value={String(role.id)}>
                                                 {role.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="w-full sm:w-48">
+                                <Select value={positionFilter} onValueChange={setPositionFilter}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="All positions" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All positions</SelectItem>
+                                        {positions.map((position) => (
+                                            <SelectItem key={position.id} value={String(position.id)}>
+                                                {position.name}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>

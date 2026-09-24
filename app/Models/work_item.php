@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Support\Facades\DB;
 
 
 /**
@@ -74,11 +75,11 @@ class work_item extends Model
         });
 
         static::saved(function (work_item $model) {
-            $model->syncParentGroupProgress();
+            $model->syncParentGroup();
         });
 
         static::deleted(function (work_item $model) {
-            $model->syncParentGroupProgress();
+            $model->syncParentGroup();
         });
     }
 
@@ -100,29 +101,49 @@ class work_item extends Model
     }
 
     /**
-     * Recalculate the parent group's progress after this item changes.
+     * Recalculate the parent group's schedule and progress after this item
+     * changes. Keeps groups consistent across every update path (forms, bulk
+     * progress, gantt moves).
      *
-     * Keeps group progress consistent across every update path (forms, bulk
-     * progress, gantt moves). When a group has work items its progress is the
-     * average of them; when it has none the manual value is left untouched.
+     * Group dates are DERIVED, not authored: when a group has work items its
+     * window is the earliest item start (falling back to due date) through
+     * the latest item due date, and its progress is the average of them.
+     * When a group has no items its manually planned window is left untouched.
      *
      * @return void
      */
-    protected function syncParentGroupProgress(): void
+    protected function syncParentGroup(): void
     {
-        $groupId = $this->group_id ?? $this->getRawOriginal('group_id');
+        // Cover both the previous and the current group so moving an item
+        // between groups recomputes both sides.
+        $groupIds = collect([$this->group_id, $this->getRawOriginal('group_id')])
+            ->filter()
+            ->unique()
+            ->values();
 
-        if (! $groupId) {
+        foreach ($groupIds as $groupId) {
+            static::recomputeGroupSchedule((int) $groupId);
+        }
+    }
+
+    /**
+     * Recompute a group's derived start/end/progress from its work items.
+     * Query-builder update: skips model events and activity logging noise.
+     */
+    public static function recomputeGroupSchedule(int $groupId): void
+    {
+        $query = work_item::query()->where('group_id', $groupId);
+
+        if (! $query->exists()) {
+            // Empty group — keep its manually planned window and progress.
             return;
         }
 
-        $average = work_item::query()
-            ->where('group_id', $groupId)
-            ->avg('progress');
-
-        // Query-builder update: skips model events and activity logging noise.
         work_item_groups::whereKey($groupId)->update([
-            'progress' => (int) round((float) $average),
+            // start_date is nullable on items; fall back to the due date.
+            'start_date' => $query->min(DB::raw('COALESCE(start_date, due_date)')),
+            'end_date' => $query->max('due_date'),
+            'progress' => (int) round((float) $query->avg('progress')),
         ]);
     }
 
