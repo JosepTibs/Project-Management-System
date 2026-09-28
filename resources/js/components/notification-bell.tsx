@@ -124,13 +124,13 @@ export function NotificationBell() {
 
     function getTypeIcon(type: string) {
         switch (type) {
-            case 'assigned': return 'ðŸ‘¤';
-            case 'status_changed': return 'ðŸ”„';
-            case 'DueDateReminder': return 'â°';
-            case 'password_reset': return '🔑';
-            case 'comment_added': return 'ðŸ’¬';
-            default: return 'ðŸ””';
-        }
+           case 'assigned': return '\u{1F464}';       // 👤
+            case 'status_changed': return '\u{1F504}'; // 🔄
+            case 'DueDateReminder': return '\u{23F0}';  // ⏰
+            case 'password_reset': return '\u{1F511}'; // 🔑
+            case 'comment_added': return '\u{1F4AC}';  // 💬
+            default: return '\u{1F514}';               // 🔔
+                }
     }
 
     return (

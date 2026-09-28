@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Link} from '@inertiajs/react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Diamond } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -10,6 +11,20 @@ interface WorkItem {
     progress: number;
 }
 
+interface Project{
+    id: number;
+    name: string;
+    description: string;
+    item_prefix: string;
+    created_by: number;
+    creator_name: string;
+    members_count: number;
+    work_items_count: number;
+    completion_percentage: number;
+    end_date: string | null;
+    archived?: boolean;
+}
+
 interface Milestone {
     id: number;
     name: string;
@@ -18,8 +33,10 @@ interface Milestone {
 }
 
 interface CalendarViewProps {
+    projectId: Project[];
     workItems: WorkItem[];
     milestones: Milestone[];
+    
 }
 
 const MAX_VISIBLE_ITEMS = 3;
@@ -48,7 +65,7 @@ type DayCellItem =
     | { kind: 'work'; id: number; sortKey: number; item: WorkItem }
     | { kind: 'milestone'; id: number; sortKey: number; item: Milestone };
 
-export default function CalendarView({ workItems, milestones }: CalendarViewProps) {
+export default function CalendarView({ projectId, workItems, milestones}: CalendarViewProps) {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const year = currentDate.getFullYear();
@@ -209,7 +226,9 @@ export default function CalendarView({ workItems, milestones }: CalendarViewProp
                                             </div>
 
                                             <div className="space-y-1">
+                                                
                                                 {visible.map((entry) => {
+                                                    
                                                     if (entry.kind === 'milestone') {
                                                         const m = entry.item as Milestone;
                                                         return (
@@ -233,6 +252,7 @@ export default function CalendarView({ workItems, milestones }: CalendarViewProp
                                                         );
                                                     }
 
+                                                   
                                                     const item = entry.item as WorkItem;
                                                     const style = getPriorityStyle(item.priority);
                                                     return (
@@ -240,10 +260,12 @@ export default function CalendarView({ workItems, milestones }: CalendarViewProp
                                                             <TooltipTrigger asChild>
                                                                 <div
                                                                     className={`flex items-center h-5 pl-1.5 pr-1.5 border-l-2 ${style.bar} bg-muted/40 hover:bg-muted/70 cursor-pointer rounded-r`}
-                                                                >
+                                                                >   
+                                                                <Link href={`/projects/${projectId}/work-items/${item.id}`} className="hover:underline">
                                                                     <span className={`truncate text-[10px] font-medium ${style.text}`}>
                                                                         {item.title}
                                                                     </span>
+                                                                    </Link>
                                                                 </div>
                                                             </TooltipTrigger>
                                                             <TooltipContent side="top" className="max-w-[200px]">

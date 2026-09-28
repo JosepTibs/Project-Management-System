@@ -57,7 +57,7 @@ class work_item extends Model
     }
 
     /**
-     * Bootstrap the model and register the completion timestamp autocast hook.
+     * Bootstrap the model and register the progress/status and completion hooks.
      *
      * Keeps `progress` as the single source of truth: whenever an item is
      * persisted at 100% completion, `completed_at` is (re)stamped; whenever it
@@ -71,6 +71,7 @@ class work_item extends Model
         parent::boot();
 
         static::saving(function (work_item $model) {
+            $model->syncProgressAndStatus();
             $model->syncCompletionTimestamp();
         });
 
@@ -99,6 +100,55 @@ class work_item extends Model
             $this->completed_at = null;
         }
     }
+
+    /**
+     * Keep progress and the Done status in lockstep.
+     *
+     * Reaching 100% moves the item onto the project Done status; moving
+     * onto Done pushes progress to 100%; dropping below 100% moves it
+     * back to To Do or In Progress (same name mapping the bulk progress
+     * endpoint uses). Rules fire only when progress or status_id changed,
+     * so unrelated saves never override a manual status pick. On create
+     * only the 100% rule applies. Moving off Done leaves progress
+     * unchanged until the next progress edit.
+     *
+     * @return void
+     */
+protected function syncProgressAndStatus(): void
+{
+    $progressChanged = $this->isDirty('progress');
+    $statusChanged   = $this->isDirty('status_id');
+
+    if ((! $progressChanged && ! $statusChanged) || $this->project_id === null) {
+        return;
+    }
+
+    $doneId = (int) work_item_statuses::where('project_id', $this->project_id)
+        ->where('name', 'Done')
+        ->value('id');
+
+    if ($doneId === 0) {
+        return; // project has no "Done" status — leave everything alone
+    }
+
+    $progress = (int) $this->progress;
+    $onDone   = (int) $this->status_id === $doneId;
+
+    if ($progressChanged && $progress === 100 && ! $onDone) {
+        $this->status_id = $doneId;              // 100% → Done
+    } elseif ($this->exists && $statusChanged && $onDone && $progress !== 100) {
+        $this->progress = 100;                   // Done → 100%
+    } elseif ($this->exists && $progressChanged && $progress < 100 && $onDone) {
+        $fallbackId = (int) work_item_statuses::where('project_id', $this->project_id)
+            ->where('name', $progress === 0 ? 'To Do' : 'In Progress')
+            ->value('id');                       // <100% → back off Done
+        if ($fallbackId !== 0) {
+            $this->status_id = $fallbackId;
+        }
+    }
+}
+
+
 
     /**
      * Recalculate the parent group's schedule and progress after this item
@@ -337,5 +387,7 @@ class work_item extends Model
     {
         return $this->belongsToMany(User::class, 'work_item_collaborators', 'work_item_id', 'user_id')->withTimestamps();
     }
+
+    
 }
 

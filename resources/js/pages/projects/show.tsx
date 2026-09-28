@@ -548,12 +548,15 @@ export default function ShowProject() {
                     <TabsContent value="calendar" className="pt-4">
                         <div className="bg-card rounded-lg border p-4">
                             <CalendarView
+                                projectId={project.id || []}
                                 workItems={visibleWorkItems.map((i: any) => ({
                                     ...i,
                                     due_date: i.due_date,
                                     progress: i.progress ?? 0,
                                 }))}
                                 milestones={project.milestones || []}
+                                
+                               
                             />
                         </div>
                     </TabsContent>
