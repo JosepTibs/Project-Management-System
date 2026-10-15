@@ -46,6 +46,7 @@ class NotificationController extends Controller
                 return [
                     'id' => $notification->id,
                     'type' => class_basename($notification->type),
+                    'type_slug' => $notification->type_slug,
                     'type_label' => $notification->type_label,
                     'data' => $notification->data,
                     'read_at' => $notification->read_at,

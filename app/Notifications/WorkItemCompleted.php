@@ -23,13 +23,13 @@ class WorkItemCompleted extends Notification implements ShouldQueue
     }
 
    
-    public function via(object $notifiable): array
+    public function via($notifiable): array
     {
         return ['database', 'broadcast'];
     }
 
     /**
-     * Get the mail representation of the notification.
+     * Get the database representation of the notification.
      */
     public function toDatabase($notifiable): array
     {
@@ -54,8 +54,8 @@ class WorkItemCompleted extends Notification implements ShouldQueue
         $title = $this->workItem->title;
 
         if ($this->actorName === 'system') {
-            return "✅ '{$title}' has been marked as completed";
+            return "'{$title}' has been marked as completed";
         }
-        return "✅ {$this->actorName} completed '{$title}'";
+        return "{$this->actorName} completed '{$title}'";
     }
 }

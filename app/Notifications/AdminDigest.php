@@ -58,7 +58,16 @@ class AdminDigest extends Notification implements ShouldQueue
 
     public function toBroadcast($notifiable): BroadcastMessage
     {
-        return new BroadcastMessage($this->toDatabase($notifiable));
+        $payload = $this->toDatabase($notifiable);
+
+        // Keep Reverb payloads small: DB keeps the full item arrays, the
+        // broadcast only carries counts + top highlights.
+        if (isset($payload['digest_data'])) {
+            $payload['digest_data']['upcoming_items'] = array_slice($payload['digest_data']['upcoming_items'] ?? [], 0, 5);
+            $payload['digest_data']['overdue_items'] = array_slice($payload['digest_data']['overdue_items'] ?? [], 0, 5);
+        }
+
+        return new BroadcastMessage($payload);
     }
 
     protected function getMessage(): string

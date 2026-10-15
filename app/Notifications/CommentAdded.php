@@ -57,19 +57,13 @@ class CommentAdded extends Notification implements ShouldQueue
 
     /**
      * Get the broadcast representation of the notification.
+     *
+     * Reuses the database payload so Echo consumers see the same fields
+     * as the REST ones (message, url, type, ...).
      */
     public function toBroadcast($notifiable): BroadcastMessage
     {
-        return new BroadcastMessage([
-            'message' => "{$this->commenter->name} commented on '{$this->workItem->title}'",
-            'work_item_id' => $this->workItem->id,
-            'project_id' => $this->workItem->project_id,
-            'project_name' => $this->workItem->project?->name ?? 'Unknown',
-            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
-            'type' => 'comment_added',
-            'actor_name' => $this->commenter->name,
-            'comment_preview' => $this->commentPreview,
-        ]);
+        return new BroadcastMessage($this->toDatabase($notifiable));
     }
 
     /**

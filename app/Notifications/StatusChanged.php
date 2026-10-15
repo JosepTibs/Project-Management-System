@@ -58,20 +58,13 @@ class StatusChanged extends Notification implements ShouldQueue
 
     /**
      * Get the broadcast representation of the notification.
+     *
+     * Reuses the database payload so Echo consumers see the same fields
+     * as the REST ones (message, url, type, ...).
      */
     public function toBroadcast($notifiable): BroadcastMessage
     {
-        return new BroadcastMessage([
-            'message' => "{$this->actorName} changed status of '{$this->workItem->title}' from {$this->oldStatus} to {$this->newStatus}",
-            'work_item_id' => $this->workItem->id,
-            'project_id' => $this->workItem->project_id,
-            'project_name' => $this->workItem->project?->name ?? 'Unknown',
-            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
-            'type' => 'status_changed',
-            'actor_name' => $this->actorName,
-            'old_status' => $this->oldStatus,
-            'new_status' => $this->newStatus,
-        ]);
+        return new BroadcastMessage($this->toDatabase($notifiable));
     }
 
     /**

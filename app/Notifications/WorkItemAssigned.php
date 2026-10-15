@@ -60,18 +60,13 @@ class WorkItemAssigned extends Notification implements ShouldQueue
 
     /**
      * Get the broadcast representation of the notification.
+     *
+     * Reuses the database payload so Echo consumers see the same fields
+     * as the REST ones (message, url, type, ...).
      */
     public function toBroadcast($notifiable): BroadcastMessage
     {
-        return new BroadcastMessage([
-            'message' => "{$this->actorName} assigned you to '{$this->workItem->title}'",
-            'work_item_id' => $this->workItem->id,
-            'project_id' => $this->workItem->project_id,
-            'project_name' => $this->workItem->project?->name ?? 'Unknown',
-            'url' => "/projects/{$this->workItem->project_id}/work-items/{$this->workItem->id}",
-            'type' => 'assigned',
-            'actor_name' => $this->actorName,
-        ]);
+        return new BroadcastMessage($this->toDatabase($notifiable));
     }
 
     /**

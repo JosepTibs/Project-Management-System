@@ -4,17 +4,21 @@ import { Button } from '@/components/ui/button';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
+import { notificationIcon, notificationIconClassName } from '@/components/notification-icon';
+import { useTabNotificationBadge } from '@/hooks/use-tab-notification-badge';
 import { useEchoNotification } from '@laravel/echo-react';
 
 interface NotificationData {
     id: string;
     type: string;
     type_label: string;
+    type_slug?: string;
     data: {
         message: string;
         url?: string;
         project_name?: string;
         type?: string;
+        reminder_type?: string;
     };
     read_at: string | null;
     is_unread: boolean;
@@ -29,6 +33,12 @@ export function NotificationBell() {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const {auth} = usePage().props as any;
     const userId = auth?.user?.id;
+    const tabBadge = useTabNotificationBadge();
+
+    // Keep the browser tab badge in sync whenever the bell's count changes.
+    useEffect(() => {
+        tabBadge.setCount(unreadCount);
+    }, [unreadCount]);
 
 
     useEchoNotification(`App.Models.User.${userId}`, () => {
@@ -57,30 +67,33 @@ export function NotificationBell() {
     async function fetchRecent() {
         try {
             const res = await apiFetch('/api/notifications/recent');
-            if(!res.ok){
-                console.error('failed to fetch notifications',  res.status);
-                setNotifications([]);
+            if (!res.ok) {
+                console.error('failed to fetch notifications', res.status);
+                return;
             }
             const data = await res.json();
-            setNotifications(data.notifications);
+            setNotifications(data.notifications ?? []);
+            // getRecent() already returns unread_count — single fetch drives
+            // both the list and the badge (incl. the browser tab badge).
+            if (typeof data.unread_count === 'number') {
+                setUnreadCount(data.unread_count);
+            }
         } catch (e) {
             console.error('Failed to fetch notifications', e);
-            setNotifications([]);
         }
     }
 
     async function fetchUnreadCount() {
         try {
             const res = await apiFetch('/api/notifications/unread-count');
-            if(!res.ok){
-                console.error('Failed to fetch unread count',  res.status);
-                setNotifications([]);
+            if (!res.ok) {
+                console.error('Failed to fetch unread count', res.status);
+                return;
             }
             const data = await res.json();
             setUnreadCount(data.count ?? 0);
         } catch (e) {
             console.error('Failed to fetch unread count', e);
-            setUnreadCount(0);
         }
     }
 
@@ -122,15 +135,12 @@ export function NotificationBell() {
         }
     }
 
-    function getTypeIcon(type: string) {
-        switch (type) {
-           case 'assigned': return '\u{1F464}';       // 👤
-            case 'status_changed': return '\u{1F504}'; // 🔄
-            case 'DueDateReminder': return '\u{23F0}';  // ⏰
-            case 'password_reset': return '\u{1F511}'; // 🔑
-            case 'comment_added': return '\u{1F4AC}';  // 💬
-            default: return '\u{1F514}';               // 🔔
-                }
+    function RowIcon({ notification }: { notification: NotificationData }) {
+        const { icon: Icon, className } = notificationIcon({
+            type: notification.type_slug ?? notification.type,
+            data: notification.data,
+        });
+        return <Icon className={notificationIconClassName(className)} />;
     }
 
     return (
@@ -192,7 +202,7 @@ export function NotificationBell() {
                                         }
                                     }}
                                 >
-                                    <span className="mt-0.5 text-lg">{getTypeIcon(notification.type)}</span>
+                                    <span className="mt-0.5"><RowIcon notification={notification} /></span>
                                     <div className="flex-1 min-w-0">
                                         <p className={cn('text-sm', notification.is_unread ? 'font-medium' : 'text-muted-foreground')}>
                                             {notification.data.message}

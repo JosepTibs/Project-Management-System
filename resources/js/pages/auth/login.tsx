@@ -53,7 +53,8 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                     {status}
                 </div>
             )}
-            <form className="flex flex-col gap-6" onSubmit={submit}>
+
+            <form className="flex flex-col gap-6" onSubmit={submit}>
                 <div className="grid gap-6">
                     <div className="grid gap-2">
                         <Label htmlFor="email" className="text-auth-foreground">
@@ -109,8 +110,12 @@ export default function Login({ status, canResetPassword }: LoginProps) {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <Checkbox id="remember" name="remember" tabIndex={3} />
-                        <Label htmlFor="remember" className="text-auth-foreground">
+                        <Checkbox 
+                       className="border-black! data-[state=unchecked]:border-black! data-[state=checked]:border-primary! data-[state=checked]:bg-primary! data-[state=checked]:text-primary-foreground!"                        name="remember" 
+                        checked={data.remember}
+                        onCheckedChange={(checked) =>setData('remember', checked === true)}
+                        tabIndex={3} />
+                        <Label  className="text-auth-foreground">
                             Remember me
                         </Label>
                     </div>

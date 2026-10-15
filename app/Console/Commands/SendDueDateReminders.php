@@ -2,11 +2,14 @@
 
 namespace App\Console\Commands;
 
+use App\Mail\AdminDigestMail;
+use App\Mail\DueDateReminderMail;
 use App\Models\User;
 use App\Models\work_item;
 use App\Notifications\DueDateReminder;
 use App\Notifications\AdminDigest;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Mail;
 
 class SendDueDateReminders extends Command
 {
@@ -50,6 +53,12 @@ class SendDueDateReminders extends Command
 
             if ($this->shouldSendToMember($workItem, $assignee, $reminderType)) {
                 $assignee->notify(new DueDateReminder($workItem, $daysUntilDue, $reminderType, 'member'));
+
+                // Member reminder email via Gmail SMTP (queued, same dedupe gate).
+                Mail::to($assignee->email)->queue(
+                    new DueDateReminderMail($workItem, $daysUntilDue, $reminderType, 'member', $assignee->name)
+                );
+
                 $count++;
             }
         }
@@ -91,6 +100,12 @@ class SendDueDateReminders extends Command
 
                 if ($this->shouldSendToManager($workItem, $manager, $reminderType)) {
                     $manager->notify(new DueDateReminder($workItem, $daysUntilDue, $reminderType, 'manager'));
+
+                    // Manager oversight email via Gmail SMTP (queued, same dedupe gate).
+                    Mail::to($manager->email)->queue(
+                        new DueDateReminderMail($workItem, $daysUntilDue, $reminderType, 'manager', $manager->name)
+                    );
+
                     $count++;
                 }
             }
@@ -139,6 +154,19 @@ class SendDueDateReminders extends Command
                 [],
                 []
             ));
+
+            // Admin daily digest email via Gmail SMTP (queued, one per admin per run).
+            Mail::to($admin->email)->queue(
+                new AdminDigestMail(
+                    $upcomingCount,
+                    $overdueCount,
+                    $dueTodayCount,
+                    $newlyCompletedCount,
+                    [],
+                    [],
+                    $admin->name,
+                )
+            );
         }
 
         return $admins->count();

@@ -3,7 +3,9 @@
 namespace App\Listeners;
 
 use App\Events\WorkItemStatusChangedEvent;
+use App\Mail\StatusChangedMail;
 use App\Notifications\StatusChanged;
+use Illuminate\Support\Facades\Mail;
 
 class SendStatusChangeNotification
 {
@@ -24,6 +26,17 @@ class SendStatusChangeNotification
             if ($settings && $settings->status_changed) {
                 $event->workItem->assignee->notify(
                     new StatusChanged($event->workItem, $event->oldStatus, $event->newStatus, $event->actorName)
+                );
+
+                // Member transactional email via Gmail SMTP (queued, respects same flag).
+                Mail::to($event->workItem->assignee->email)->queue(
+                    new StatusChangedMail(
+                        $event->workItem,
+                        $event->oldStatus,
+                        $event->newStatus,
+                        $event->actorName,
+                        $event->workItem->assignee->name,
+                    )
                 );
             }
         }

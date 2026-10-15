@@ -12,7 +12,10 @@ use App\Http\Controllers\ProjectSetupController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WorkItemController;
 use App\Http\Controllers\AdminDigestController;
+use App\Mail\SendTestEmail;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
+
 use Inertia\Inertia;
 
 
@@ -94,6 +97,11 @@ Route::middleware(['auth'])->group(function () {
 
     // Admin Digest
     Route::get('/admin/digest', [AdminDigestController::class, 'index'])->name('admin.digest');
+
+    Route::get('test-mail', function () {
+        $message = 'Test lang 2 from Project Management';
+        Mail::to('josephteves472@gmail.com')->send(new SendTestEmail($message));
+    });
 });
 require __DIR__.'/settings.php';
 require __DIR__.'/auth.php';

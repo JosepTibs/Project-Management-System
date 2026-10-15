@@ -3,7 +3,9 @@
 namespace App\Listeners;
 
 use App\Events\CommentAddedEvent;
+use App\Mail\CommentAddedMail;
 use App\Notifications\CommentAdded;
+use Illuminate\Support\Facades\Mail;
 
 /**
  * Listens for CommentAddedEvent and sends notifications
@@ -38,6 +40,16 @@ class SendCommentAddedNotification
                 $event->workItem->assignee->notify(
                     new CommentAdded($event->workItem, $event->commenter, $event->commentPreview)
                 ); $notified[] = $event->workItem->assignee->id;
+
+                // Member transactional email via Gmail SMTP (queued, respects same flag).
+                Mail::to($event->workItem->assignee->email)->queue(
+                    new CommentAddedMail(
+                        $event->workItem,
+                        $event->commenter,
+                        $event->commentPreview,
+                        $event->workItem->assignee->name,
+                    )
+                );
             }
         }
 
@@ -49,6 +61,16 @@ class SendCommentAddedNotification
             if ($settings && $settings->comment_added) {
                 $event->originalCommentAuthor->notify(
                     new CommentAdded($event->workItem, $event->commenter, $event->commentPreview)
+                );
+
+                // Reply-author transactional email via Gmail SMTP (queued, respects same flag).
+                Mail::to($event->originalCommentAuthor->email)->queue(
+                    new CommentAddedMail(
+                        $event->workItem,
+                        $event->commenter,
+                        $event->commentPreview,
+                        $event->originalCommentAuthor->name,
+                    )
                 );
             }
         }

@@ -2,9 +2,11 @@
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
 import { Button } from '@/components/ui/button';
-import { Bell, CheckCheck, ArrowLeft, ChevronLeft, ChevronRight, Check, UserPlus, RefreshCw, Clock, MessageSquare, KeyRound, Loader2} from 'lucide-react';
+import { NotificationTypeIcon as TypeIcon } from '@/components/notification-icon';
+import { Bell, CheckCheck, ArrowLeft, ChevronLeft, ChevronRight, Check, Loader2} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/api';
+import { useTabNotificationBadge } from '@/hooks/use-tab-notification-badge';
 import { useState, useEffect } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -18,11 +20,13 @@ interface NotificationData {
     id: string;
     type: string;
     type_label: string;
+    type_slug?: string;
     data: {
         message: string;
         url?: string;
         project_name?: string;
         type?: string;
+        reminder_type?: string;
     };
     read_at: string | null;
     is_unread: boolean;
@@ -46,24 +50,6 @@ interface NotificationsPageProps {
     unread_count?: number;
 }
 
-const TYPE_ICON: Record<string, { icon: typeof Bell; className: string }> = {
-    WorkItemAssigned: { icon: UserPlus, className: 'bg-purple-100 text-purple-600 dark:bg-purple-950 dark:text-purple-400' },
-    StatusChanged: { icon: RefreshCw, className: 'bg-blue-100 text-blue-600 dark:bg-blue-950 dark:text-blue-400' },
-    DueDateReminder: { icon: Clock, className: 'bg-orange-100 text-orange-600 dark:bg-orange-950 dark:text-orange-400' },
-    CommentAdded: { icon: MessageSquare, className: 'bg-teal-100 text-teal-600 dark:bg-teal-950 dark:text-teal-400' },
-    PasswordResetRequested: { icon: KeyRound, className: 'bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400' },
-};
-
-function TypeIcon({ type }: { type: string }) {
-    const entry = TYPE_ICON[type] ?? { icon: Bell, className: 'bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400' };
-    const Icon = entry.icon;
-    return (
-        <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', entry.className)}>
-            <Icon className="h-4 w-4" />
-        </span>
-    );
-}
-
 export default function NotificationsIndex({
     notifications,
     filter = 'all',
@@ -73,11 +59,17 @@ export default function NotificationsIndex({
     const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
     const [isNavigating, setIsNavigating] = useState(false);
     const [unreadCount, setUnreadCount] = useState(unread_count);
+    const tabBadge = useTabNotificationBadge();
 
     useEffect(() => {
         setItems(notifications.data);
         setUnreadCount(unread_count);
     }, [notifications.data, unread_count]);
+
+    // Reads on this page also update the browser tab badge.
+    useEffect(() => {
+        tabBadge.setCount(unreadCount);
+    }, [unreadCount]);
 
     async function markAsRead(id: string) {
         const snapshot = items;
@@ -258,7 +250,10 @@ export default function NotificationsIndex({
 
                                         )}
                                     >
-                                        <TypeIcon type={notification.type} />
+                                        <TypeIcon
+                                            type={notification.type_slug ?? notification.type}
+                                            data={notification.data}
+                                        />
                                         <div className="min-w-0 flex-1">
                                             <p
                                                 className={cn(

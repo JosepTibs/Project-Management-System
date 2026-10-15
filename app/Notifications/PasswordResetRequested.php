@@ -28,6 +28,11 @@ class PasswordResetRequested extends Notification implements ShouldQueue
     /**
      * Get the notification's delivery channels.
      *
+     * Database only, by design: password-reset requests are relayed to
+     * admins in-app (see PasswordResetLinkController) so a mail outage
+     * can never block account recovery. Do not add 'broadcast'/'mail'
+     * here without revisiting that guarantee.
+     *
      * @return array<int, string>
      */
     public function via($notifiable): array
